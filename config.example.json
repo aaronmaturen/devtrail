@@ -1,0 +1,12 @@
+{
+  "github_token": "YOUR_GITHUB_TOKEN_HERE",
+  "repos": [
+    "octocat/Hello-World",
+    "yourorg/yourrepo"
+  ],
+  "jira_host": "your-domain.atlassian.net",
+  "jira_email": "your-email@example.com",
+  "jira_api_token": "YOUR_JIRA_API_TOKEN",
+  "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY",
+  "dry_run": true
+}
