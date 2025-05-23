@@ -24,6 +24,16 @@ function getTimestampedFilename(prefix) {
   return path.join(REPORTS_DIR, `${prefix}_${timestamp}.md`);
 }
 
+// Load config and get user context
+function loadConfig() {
+  const configPath = path.join(__dirname, '..', 'config.json');
+  if (!fs.existsSync(configPath)) {
+    console.error(chalk.red(`Error: Missing config.json. Please copy config.example.json to config.json and update it.`));
+    process.exit(1);
+  }
+  return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+}
+
 // Load processed PRs
 function loadProcessedPRs() {
   if (!fs.existsSync(PROCESSED_PATH)) {
@@ -59,19 +69,51 @@ function getRecentPRs(processedPRs) {
   return recentPRs;
 }
 
-// Group PRs by month
+// Extract Jira completion date from PR data
+function getJiraCompletionDate(pr) {
+  // Default to PR merge date if no Jira info is available
+  if (!pr.merged_at) return null;
+  
+  // Try to extract Jira status and completion date from evidence
+  if (pr.evidence && Array.isArray(pr.evidence)) {
+    // Look through all evidence items for Jira info
+    for (const item of pr.evidence) {
+      if (item.evidence && typeof item.evidence === 'string') {
+        // Look for Jira status information in the evidence text
+        const statusMatch = item.evidence.match(/Jira ticket.*?status.*?(?:Done|Completed|Resolved|Closed).*?(\d{4}-\d{2}-\d{2})/i);
+        if (statusMatch && statusMatch[1]) {
+          // Found a completion date in the evidence
+          const completionDate = new Date(statusMatch[1]);
+          if (!isNaN(completionDate)) {
+            console.log(chalk.blue(`Found Jira completion date ${completionDate.toISOString().split('T')[0]} for PR #${pr.pr_number}`));
+            return completionDate;
+          }
+        }
+      }
+    }
+  }
+  
+  // If we can't find a specific Jira completion date, fall back to the PR merge date
+  const mergedAt = new Date(pr.merged_at);
+  if (!isNaN(mergedAt)) {
+    return mergedAt;
+  }
+  
+  return null;
+}
+
+// Group PRs by month based on Jira completion date
 function groupPRsByMonth(recentPRs) {
   const monthGroups = {};
   
   Object.entries(recentPRs).forEach(([repo, prs]) => {
     prs.forEach(pr => {
-      if (!pr.merged_at) return;
-      
-      const mergedAt = new Date(pr.merged_at);
-      if (isNaN(mergedAt)) return;
+      // Get the completion date (either from Jira or PR merge date)
+      const completionDate = getJiraCompletionDate(pr);
+      if (!completionDate) return;
       
       // Format as YYYY-MM
-      const monthKey = `${mergedAt.getFullYear()}-${String(mergedAt.getMonth() + 1).padStart(2, '0')}`;
+      const monthKey = `${completionDate.getFullYear()}-${String(completionDate.getMonth() + 1).padStart(2, '0')}`;
       
       if (!monthGroups[monthKey]) {
         monthGroups[monthKey] = [];
@@ -79,7 +121,8 @@ function groupPRsByMonth(recentPRs) {
       
       monthGroups[monthKey].push({
         ...pr,
-        repo
+        repo,
+        completion_date: completionDate.toISOString() // Store the completion date for reference
       });
     });
   });
@@ -147,30 +190,26 @@ async function identifyCapitalizableFeatures(monthlyPRs, config) {
     }
     
     // Prepare data for Claude
-    const prompt = `You are a software capitalization expert helping to identify which development work qualifies as capitalizable expenses. 
+    const config = loadConfig();
+    const userContext = config.user_context || 'I am a senior developer content in my job with a great manager that supports me.';
+    
+    // Format PR data
+    const prText = prData.map(pr => 
+      `PR: ${pr.repo}#${pr.number} - ${pr.title}
+` +
+      `Merged: ${pr.merged_at}
+` +
+      `${pr.jira_key ? `Jira: ${pr.jira_key} - ${pr.jira_title}\n` : ''}` +
+      `${pr.body ? `Description: ${pr.body.substring(0, 200)}${pr.body.length > 200 ? '...' : ''}\n` : ''}`
+    ).join('\n');
+    
+    const prompt = `You are an expert at identifying capitalizable features from software engineering work. The developer has the following context:
 
-For software development, capitalizable work typically includes:
-1. New feature development
-2. Major enhancements to existing functionality
-3. Development of new integrations or APIs
-4. Significant UI/UX redesigns that add functionality
-5. Development of new modules or components
+${userContext}
 
-Work that is NOT typically capitalizable includes:
-1. Bug fixes
-2. Minor UI tweaks
-3. Refactoring without adding functionality
-4. Documentation updates
-5. Routine maintenance
+Review the following GitHub pull requests from ${monthName} and identify which ones represent capitalizable work:
 
-Below is a list of pull requests from ${monthName}:
-
-${prData.map(pr => `
-PR: ${pr.repo}#${pr.number} - ${pr.title}
-Merged: ${pr.merged_at}
-${pr.jira_key ? `Jira: ${pr.jira_key} - ${pr.jira_title}` : ''}
-${pr.body ? `Description: ${pr.body.substring(0, 200)}${pr.body.length > 200 ? '...' : ''}` : ''}
-`).join('\n')}
+${prText}
 
 For each PR that represents capitalizable work (new features or significant enhancements), provide:
 1. A descriptive feature name (what was built)
@@ -189,7 +228,7 @@ Only include PRs that represent capitalizable work. If a PR is for bug fixes, ma
       console.log(chalk.yellow(`Identifying capitalizable features for ${monthName}...`));
       
       const completion = await anthropic.messages.create({
-        model: 'claude-3-opus-20240229',
+        model: 'claude-4-opus',
         max_tokens: 2048,
         temperature: 0.2,
         messages: [{ role: 'user', content: prompt }]
@@ -230,20 +269,33 @@ Only include PRs that represent capitalizable work. If a PR is for bug fixes, ma
 // Main function
 async function main() {
   try {
+    // Check for --anthropic flag
+    const useAnthropicAPI = process.argv.includes('--anthropic');
+    
+    // Load config for API key and user context
+    let config = null;
+    let anthropicApiKey = null;
+    
+    if (useAnthropicAPI) {
+      config = loadConfig();
+      
+      if (!config.anthropic_api_key) {
+        throw new Error('Missing anthropic_api_key in config.json');
+      }
+      
+      anthropicApiKey = config.anthropic_api_key;
+      
+      // Log user context if available
+      if (config.user_context) {
+        console.log(chalk.bold.blue('\nContext:'));
+        console.log(chalk.italic(config.user_context));
+        console.log();
+      }
+    }
+    
     const processedPRs = loadProcessedPRs();
     const recentPRs = getRecentPRs(processedPRs);
     const monthlyPRs = groupPRsByMonth(recentPRs);
-    
-    // Load config for API key
-    const configPath = path.join(__dirname, '..', 'config.json');
-    if (!fs.existsSync(configPath)) {
-      throw new Error('Missing config.json');
-    }
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    
-    if (!config.anthropic_api_key) {
-      throw new Error('Missing anthropic_api_key in config.json');
-    }
     
     await identifyCapitalizableFeatures(monthlyPRs, config);
   } catch (error) {

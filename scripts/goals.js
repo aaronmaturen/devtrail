@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 const { Anthropic } = require('@anthropic-ai/sdk');
+const JiraClient = require('jira-client');
 
 // Paths
 const PROCESSED_PATH = path.join(__dirname, '..', 'data', 'processed-prs.json');
@@ -23,6 +24,16 @@ function getTimestampedFilename(prefix) {
     .replace('T', '_')
     .split('.')[0]; // Remove milliseconds
   return path.join(REPORTS_DIR, `${prefix}_${timestamp}.md`);
+}
+
+// Load config and get user context
+function loadConfig() {
+  const configPath = path.join(__dirname, '..', 'config.json');
+  if (!fs.existsSync(configPath)) {
+    console.error(chalk.red(`Error: Missing config.json. Please copy config.example.json to config.json and update it.`));
+    process.exit(1);
+  }
+  return JSON.parse(fs.readFileSync(configPath, 'utf8'));
 }
 
 // Load processed PRs
@@ -214,9 +225,23 @@ async function generateGoals(grouped, config) {
     });
   });
   
-  const prompt = `You are an expert career coach helping to prepare SMART goals for the upcoming year based on a performance review. 
+  // Get user context from config
+  const userContext = config.user_context || 'I am a senior developer content in my job with a great manager that supports me.';
+  
+  // Get future Jira tickets if available
+  let futureTicketsText = 'No future tickets available.';
+  if (config.jiraTickets && config.jiraTickets.length > 0) {
+    futureTicketsText = config.jiraTickets.map(ticket => {
+      return `${ticket.key}: ${ticket.summary} (${ticket.status})`;
+    }).join('\n');
+  }
+  
+  // Build the prompt
+  const prompt = `You are an expert at creating SMART goals for software engineers. The developer has the following context:
 
-Below is a summary of the person's work from GitHub pull requests, categorized by criteria:
+${userContext}
+
+Based on the following evidence from GitHub pull requests and upcoming Jira tickets, create SMART goals for the next performance period.
 
 CRITERIA WITH NO EVIDENCE (areas for potential growth):
 ${noEvidenceText}
@@ -230,29 +255,29 @@ ${strengthsText}
 RECENT WORK SUMMARY:
 ${prSummary.slice(0, 20).join('\n')}
 
-Based on this information, create AT LEAST 10 SMART goals for the upcoming year. Each goal should:
-1. Be Specific, Measurable, Achievable, Relevant, and Time-bound
-2. Include 3-5 specific sub-tasks or milestones for each goal
-3. Address both areas for growth and ways to leverage existing strengths
-4. Be relevant to the person's role as a software engineer
-5. Use direct, informal language with action verbs (no pronouns like "I" or "the engineer")
+UPCOMING JIRA TICKETS (future work):
+${futureTicketsText}
+
+For each goal:
+1. Make it specific and clear what success looks like
+2. Include how it will be measured
+3. Ensure it's achievable but stretching
+4. Make it relevant to both the engineer's growth and the organization's needs
+5. Include a timeframe (typically within the next 6-12 months)
 
 Format each goal as:
+
 ## Goal Title
-Goal description that is SMART (specific, measurable, achievable, relevant, time-bound)
-
-### Milestones:
-- Milestone 1 with specific completion criteria and timeline
-- Milestone 2 with specific completion criteria and timeline
-- Milestone 3 with specific completion criteria and timeline
-
-Make sure each goal and milestone is concrete, actionable, and has clear success criteria. Include a mix of technical and soft skills goals.`;
+**SMART Goal:** [The complete goal statement]
+**Success Criteria:** [How to know when this goal is achieved]
+**Alignment:** [How this goal aligns with career growth and organizational needs]
+**Timeline:** [When this should be completed by]`;
   
   try {
     console.log(chalk.yellow('Generating SMART goals...'));
     
     const completion = await anthropic.messages.create({
-      model: 'claude-3-opus-20240229',
+      model: 'claude-opus-4-20250514',
       max_tokens: 4096,
       temperature: 0.3,
       messages: [{ role: 'user', content: prompt }]
@@ -273,23 +298,74 @@ Make sure each goal and milestone is concrete, actionable, and has clear success
   }
 }
 
+// Fetch future Jira tickets
+async function fetchFutureJiraTickets(config) {
+  if (!config.jira_host || !config.jira_email || !config.jira_api_token || !config.jira_projects) {
+    console.log(chalk.yellow('Jira configuration incomplete. Skipping Jira ticket fetch.'));
+    return [];
+  }
+
+  try {
+    console.log(chalk.blue('Initializing Jira client...'));
+    const jira = new JiraClient({
+      protocol: 'https',
+      host: config.jira_host.replace(/^https?:\/\//, ''),
+      username: config.jira_email,
+      password: config.jira_api_token,
+      apiVersion: '2',
+      strictSSL: true
+    });
+
+    const projectKeys = config.jira_projects.join(',');
+    
+    // JQL query to find future work tickets that aren't actively being worked on
+    // This works with standard Jira workflows and custom ones
+    const jql = `project in (${projectKeys}) AND status not in ("In Progress", "In Review", "In Testing", Done, Closed, Resolved) ORDER BY priority DESC, updated DESC`;
+    
+    console.log(chalk.blue(`Fetching future tickets with JQL: ${jql}`));
+    const issues = await jira.searchJira(jql, { maxResults: 20 });
+    
+    console.log(chalk.green(`Found ${issues.issues.length} future tickets`));
+    
+    return issues.issues.map(issue => ({
+      key: issue.key,
+      summary: issue.fields.summary,
+      status: issue.fields.status.name,
+      priority: issue.fields.priority?.name || 'Unknown',
+      description: issue.fields.description || ''
+    }));
+  } catch (error) {
+    console.error(chalk.red(`Error fetching Jira tickets: ${error.message}`));
+    return [];
+  }
+}
+
 // Main function
 async function main() {
   try {
-    const processedPRs = loadProcessedPRs();
-    const criteria = loadCriteria();
-    const grouped = groupByCriterion(processedPRs, criteria);
+    console.log(chalk.bold('Loading data...'));
     
-    // Load config for API key
-    const configPath = path.join(__dirname, '..', 'config.json');
-    if (!fs.existsSync(configPath)) {
-      throw new Error('Missing config.json');
-    }
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    
+    // Load config for API key and user context
+    const config = loadConfig();
     if (!config.anthropic_api_key) {
       throw new Error('Missing anthropic_api_key in config.json');
     }
+    
+    // Log user context if available
+    if (config.user_context) {
+      console.log(chalk.bold.blue('\nContext:'));
+      console.log(chalk.italic(config.user_context));
+      console.log();
+    }
+    
+    // Fetch future Jira tickets
+    console.log(chalk.bold('Fetching future Jira tickets...'));
+    const jiraTickets = await fetchFutureJiraTickets(config);
+    config.jiraTickets = jiraTickets;
+    
+    const processedPRs = loadProcessedPRs();
+    const criteria = loadCriteria();
+    const grouped = groupByCriterion(processedPRs, criteria);
     
     await generateGoals(grouped, config);
   } catch (error) {

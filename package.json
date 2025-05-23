@@ -10,12 +10,16 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "sync": "node scripts/sync.js",
     "report": "node scripts/report.js",
+    "report-enhanced": "node scripts/report-enhanced.js",
     "summary": "node scripts/report.js --ai",
+    "comprehensive-summary": "node scripts/summary.js",
     "goals": "node scripts/goals.js",
-    "cap": "node scripts/capitalization.js"
+    "cap": "node scripts/capitalization.js",
+    "components": "node scripts/component-analysis.js",
+    "review-package": "node scripts/generate-review-package.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.50.4",
+    "@anthropic-ai/sdk": "^0.52.0",
     "chalk": "^4.1.2",
     "csv-parse": "^5.6.0",
     "jira-client": "^8.2.2",

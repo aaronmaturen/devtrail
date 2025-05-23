@@ -5,6 +5,10 @@ data/*
 reports/*
 !reports/.gitkeep
 
+# Lattice files (except example)
+lattice/*
+!lattice/example/
+
 # Node.js
 node_modules/
 npm-debug.log
