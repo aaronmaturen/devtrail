@@ -244,7 +244,7 @@ Based on this evidence, create 3-5 concise, specific bullet points that summariz
 
     try {
       const completion = await anthropic.messages.create({
-        model: "claude-opus-4-20250514",
+        model: config.claude_model,
         max_tokens: 1024,
         temperature: 0.2,
         messages: [{ role: "user", content: prompt }],
@@ -346,7 +346,7 @@ Provide a well-structured summary that highlights strengths, areas for improveme
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-opus-4-20250514",
+      model: config.claude_model,
       max_tokens: 4000,
       temperature: 0.7,
       messages: [{ role: "user", content: prompt }],

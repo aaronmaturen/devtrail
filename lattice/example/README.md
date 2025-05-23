@@ -7,8 +7,6 @@ This directory contains example templates for performance reviews and goal track
 - **goals.md**: Example performance goals with key results and due dates
 - **employee-review.md**: Example self-review for annual performance evaluation
 - **manager-review.md**: Example manager review for annual performance evaluation
-- **mid-year-employee.md**: Example self-review for mid-year check-in
-- **mid-year-manager.md**: Example manager review for mid-year check-in
 
 ## Usage
 

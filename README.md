@@ -36,6 +36,7 @@ For Claude integration:
 
 1. Get an API key from [Anthropic Console](https://console.anthropic.com/)
 2. Add your key to `config.json`
+3. Optionally specify a Claude model (defaults to "claude-sonnet-4")
 
 ## Configuration
 
@@ -49,7 +50,8 @@ Create a `config.json` file with:
   "jira_email": "your-email@example.com",
   "jira_api_token": "YOUR_JIRA_API_TOKEN",
   "jira_projects": ["ONE", "TWO"],
-  "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY"
+  "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY",
+  "claude_model": "claude-sonnet-4"
 }
 ```
 
@@ -90,6 +92,9 @@ npm run review-package
 
 # Run interactive review session
 node scripts/interactive-review.js
+
+# Clean data and reports directories
+npm run clean
 ```
 
 ## Workflow Diagrams

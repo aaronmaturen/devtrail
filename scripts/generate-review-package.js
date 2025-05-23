@@ -25,29 +25,52 @@ if (!fs.existsSync(reportDir)) {
   fs.mkdirSync(reportDir, { recursive: true });
 }
 
-// Function to run a script and capture its output
+// Function to run a script and show real-time output
 function runScript(scriptName) {
   console.log(chalk.blue(`\n=== Running ${scriptName} ===`));
   
   try {
-    const output = execSync(`npm run ${scriptName}`, { 
+    // Use 'inherit' for stdout and stderr to show real-time output
+    execSync(`npm run ${scriptName}`, { 
       cwd: path.join(__dirname, '..'),
-      stdio: ['inherit', 'pipe', 'pipe'],
-      encoding: 'utf8'
+      stdio: 'inherit'
     });
     
     console.log(chalk.green(`✓ ${scriptName} completed successfully`));
-    return { success: true, output };
+    return { success: true };
   } catch (error) {
     console.error(chalk.red(`✗ ${scriptName} failed: ${error.message}`));
-    return { success: false, output: error.message };
+    return { success: false };
   }
 }
 
-// Function to extract report paths from script output
-function extractReportPath(output) {
-  const match = output.match(/saved to: (.+\.md)/);
-  return match ? match[1].trim() : null;
+// Function to find the most recent report file for a given script
+function findLatestReportFile(scriptName) {
+  const reportsDir = path.join(__dirname, '..', 'reports');
+  if (!fs.existsSync(reportsDir)) return null;
+  
+  const files = fs.readdirSync(reportsDir);
+  
+  // Map scripts to their expected filename prefixes
+  const prefixMap = {
+    'report': 'evidence',
+    'report-enhanced': 'report',
+    'summary': 'ai_summary',
+    'comprehensive-summary': 'comprehensive_summary',
+    'goals': 'goals',
+    'components': 'component_analysis',
+    'cap': 'capitalization'
+  };
+  
+  const prefix = prefixMap[scriptName] || scriptName;
+  
+  // Filter files that match the prefix and sort by modification time (newest first)
+  const matchingFiles = files
+    .filter(file => file.startsWith(prefix) && file.endsWith('.md'))
+    .map(file => path.join(reportsDir, file))
+    .sort((a, b) => fs.statSync(b).mtime.getTime() - fs.statSync(a).mtime.getTime());
+  
+  return matchingFiles.length > 0 ? matchingFiles[0] : null;
 }
 
 // Main function to run all scripts
@@ -66,8 +89,10 @@ async function main() {
     console.log(chalk.yellow(`\nRunning: ${script.name} - ${script.description}...`));
     const result = runScript(script.name);
     
-    // Extract report path if available
-    const reportPath = extractReportPath(result.output);
+    // Find the latest report file for this script
+    // Give a small delay to ensure file system has updated
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const reportPath = findLatestReportFile(script.name);
     
     results.push({
       name: script.name,
@@ -86,9 +111,16 @@ async function main() {
   
   for (const result of results) {
     const status = result.success ? '✅ Success' : '❌ Failed';
-    const report = result.reportPath ? `[View Report](${result.reportPath})` : 'No report generated';
     
-    packageReport += `| ${result.name} | ${result.description} | ${status} | ${report} |\n`;
+    // Create a relative path for the report link
+    let reportDisplay = 'No report generated';
+    if (result.reportPath) {
+      // Get just the filename for display in markdown
+      const reportFilename = path.basename(result.reportPath);
+      reportDisplay = `[${reportFilename}](../reports/${reportFilename})`;
+    }
+    
+    packageReport += `| ${result.name} | ${result.description} | ${status} | ${reportDisplay} |\n`;
   }
   
   // Add instructions for interactive review
