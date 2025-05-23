@@ -312,9 +312,13 @@ Reply in this exact JSON format:
 
 If no criteria match, return an empty array for matches: {"matches": []}`;
 
+  // Ensure the model name is valid
+  const modelToUse = claude_model.endsWith('-0') ? claude_model : claude_model + '-0';
+  logger.info(`Using Claude model: ${modelToUse}`);
+  
   // Increase max_tokens to allow for more detailed analysis
   const completion = await anthropic.messages.create({
-    model: claude_model,
+    model: modelToUse,
     max_tokens: 1024,
     temperature: 0,
     messages: [{ role: "user", content: prompt }],

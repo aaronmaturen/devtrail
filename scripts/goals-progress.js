@@ -325,7 +325,8 @@ async function generateGoalProgress(
   goalDescription,
   keyResults,
   relevantPRs,
-  config
+  config,
+  retryCount = 0
 ) {
   try {
     const anthropic = new Anthropic({ apiKey: config.anthropic_api_key });
@@ -385,6 +386,18 @@ Format your response in markdown with clear sections for Progress, Accomplishmen
 
     return completion.content[0].text.trim();
   } catch (error) {
+    // Check if it's a rate limit error and we haven't exceeded max retries
+    if (error.message.includes("rate_limit_error") && retryCount < 3) {
+      const waitTime = (retryCount + 1) * 30000; // Exponential backoff: 30s, 60s, 90s
+      console.log(
+        chalk.yellow(
+          `Rate limit hit for goal "${goalTitle}". Waiting ${waitTime/1000} seconds before retry ${retryCount + 1}/3...`
+        )
+      );
+      await delay(waitTime);
+      return generateGoalProgress(goalTitle, goalDescription, keyResults, relevantPRs, config, retryCount + 1);
+    }
+    
     console.error(
       chalk.red(
         `Error generating progress for goal "${goalTitle}": ${error.message}`
@@ -507,6 +520,11 @@ const goalKeywords = {
   ],
 };
 
+// Helper function to delay execution
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Generate progress report for all goals
 async function generateGoalsProgressReport(grouped, config) {
   const reportFilename = getTimestampedFilename("goals_progress");
@@ -529,19 +547,31 @@ async function generateGoalsProgressReport(grouped, config) {
     const keywords = goalKeywords[goal.title] || [];
     const relevantPRs = getPRsForGoal(grouped, keywords);
 
-    // Generate progress report
-    const progressReport = await generateGoalProgress(
-      goal.title,
-      goal.description,
-      goal.keyResults,
-      relevantPRs,
-      config
-    );
+    try {
+      // Generate progress report
+      const progressReport = await generateGoalProgress(
+        goal.title,
+        goal.description,
+        goal.keyResults,
+        relevantPRs,
+        config
+      );
 
-    console.log(chalk.green(`Completed progress report for: ${goal.title}`));
+      console.log(chalk.green(`Completed progress report for: ${goal.title}`));
 
-    // Add to markdown content
-    markdownContent += progressReport + "\n\n---\n\n";
+      // Add to markdown content
+      markdownContent += progressReport + "\n\n---\n\n";
+      
+      // Add a delay between API calls to avoid rate limiting
+      // Wait 15 seconds between calls to stay under the rate limit
+      if (goals.indexOf(goal) < goals.length - 1) {
+        console.log(chalk.blue("Waiting 15 seconds to avoid rate limiting..."));
+        await delay(15000);
+      }
+    } catch (error) {
+      console.error(chalk.red(`Error processing goal "${goal.title}": ${error.message}`));
+      markdownContent += `## ${goal.title}\n\nError generating progress report: ${error.message}\n\n---\n\n`;
+    }
   }
 
   // Save report to file

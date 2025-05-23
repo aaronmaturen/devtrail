@@ -17,7 +17,9 @@
     "cap": "node scripts/capitalization.js",
     "components": "node scripts/component-analysis.js",
     "review-package": "node scripts/generate-review-package.js",
-    "clean": "node scripts/clean.js"
+    "clean": "node scripts/clean.js",
+    "upward-review": "node scripts/upward-review.js",
+    "goals-progress": "node scripts/goals-progress.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
