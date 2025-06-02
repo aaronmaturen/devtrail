@@ -237,39 +237,35 @@ function groupByCriterion(processedPRs, criteria) {
               };
             }
 
-            grouped[criterionId].evidence.push({
-              repo,
-              pr_number: pr.pr_number,
-              pr_title: pr.pr_title,
-              confidence: item.confidence || 0,
-              evidence: item.evidence,
-            });
+      // Add evidence to the criterion
+      grouped[criterionId].evidence.push({
+        repo: pr.repo,
+        pr_number: pr.pr_number,
+        pr_title: pr.pr_title,
+        pr_description: pr.pr_description || "",
+        confidence: criterion.confidence,
+        evidence: criterion.evidence,
+      });
 
-            grouped[criterionId].totalConfidence += item.confidence || 0;
-            grouped[criterionId].count += 1;
-          }
-        });
-      } else if (pr.evidence && pr.evidence.criterion_id) {
-        // Handle old format (single evidence object)
-        const criterionId = pr.evidence.criterion_id;
-        if (criterionId && criterionId !== "NONE" && criterionId !== "ERROR") {
-          if (!grouped[criterionId]) {
-            grouped[criterionId] = {
-              id: criterionId,
-              area: "Unknown",
-              subarea: "Unknown",
-              description: "Unknown criterion",
-              evidence: [],
-              totalConfidence: 0,
-              count: 0,
-              order: parseInt(criterionId, 10) || 999,
-            };
-          }
+      grouped[criterionId].totalConfidence += criterion.confidence;
+      grouped[criterionId].count += 1;
+    });
 
+    // Handle old format (no criteria array)
+    if (!pr.criteria && pr.criterion) {
+      const criterionId = pr.criterion;
+
+      // Skip if criterion doesn't exist in our list
+      if (!grouped[criterionId]) return;
+
+      // Add evidence to the criterion
+      if (pr.evidence && typeof pr.evidence === "object") {
+        if (pr.evidence.evidence) {
           grouped[criterionId].evidence.push({
-            repo,
+            repo: pr.repo,
             pr_number: pr.pr_number,
             pr_title: pr.pr_title,
+            pr_description: pr.pr_description || "",
             confidence: 100, // Default for old format
             evidence: pr.evidence.evidence,
           });
@@ -278,16 +274,17 @@ function groupByCriterion(processedPRs, criteria) {
           grouped[criterionId].count += 1;
         }
       }
-    });
+    }
   });
 
   return grouped;
 }
 
-// Get recent PRs for a specific goal
+// Get PRs for a specific goal
 function getPRsForGoal(grouped, goalKeywords) {
   const relevantPRs = [];
 
+  // Iterate through all criteria
   Object.values(grouped).forEach((criterion) => {
     // Skip criteria with no evidence
     if (criterion.count === 0) return;
@@ -308,6 +305,7 @@ function getPRsForGoal(grouped, goalKeywords) {
           repo: evidence.repo,
           pr_number: evidence.pr_number,
           pr_title: evidence.pr_title,
+          pr_description: evidence.pr_description || "",
           confidence: evidence.confidence,
           evidence: evidence.evidence,
         });
@@ -317,6 +315,29 @@ function getPRsForGoal(grouped, goalKeywords) {
 
   // Sort by confidence
   return relevantPRs.sort((a, b) => b.confidence - a.confidence);
+}
+
+// Optimize PRs for Claude prompt to reduce token usage
+function optimizePRsForPrompt(relevantPRs, maxPRs = 10, maxEvidenceLength = 250) {
+  // Limit to top N most relevant PRs to reduce token usage
+  const topPRs = relevantPRs.slice(0, maxPRs);
+  
+  return topPRs.map(pr => {
+    // Truncate evidence if it's too long
+    const evidence = pr.evidence && pr.evidence.length > maxEvidenceLength 
+      ? pr.evidence.substring(0, maxEvidenceLength) + "..." 
+      : (pr.evidence || "");
+      
+    return {
+      ...pr,
+      evidence: evidence
+    };
+  });
+}
+
+// Helper function to delay execution
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Generate progress report for a specific goal
@@ -335,9 +356,15 @@ async function generateGoalProgress(
     const userContext =
       config.user_context ||
       "I am a senior developer content in my job with a great manager that supports me.";
+    
+    // Optimize PRs for token usage
+    const maxPRs = retryCount > 0 ? Math.max(5, 10 - retryCount * 2) : 10;
+    const maxEvidenceLength = retryCount > 0 ? Math.max(100, 250 - retryCount * 50) : 250;
+    const optimizedPRs = optimizePRsForPrompt(relevantPRs, maxPRs, maxEvidenceLength);
+    console.log(chalk.blue(`Using ${optimizedPRs.length} PRs (from ${relevantPRs.length} total) for goal: ${goalTitle}`));
 
     // Format PRs for the prompt
-    const prText = relevantPRs
+    const prText = optimizedPRs
       .map(
         (pr) =>
           `PR: ${pr.repo}#${pr.pr_number} - ${pr.pr_title}\n` +
@@ -395,6 +422,12 @@ Format your response in markdown with clear sections for Progress, Accomplishmen
         )
       );
       await delay(waitTime);
+      
+      // Further reduce tokens on retry by limiting PRs and evidence length
+      const maxPRs = Math.max(5, 10 - retryCount * 2);
+      const maxEvidenceLength = Math.max(100, 250 - retryCount * 50);
+      console.log(chalk.yellow(`Reducing to ${maxPRs} PRs with max ${maxEvidenceLength} chars of evidence each`));
+      
       return generateGoalProgress(goalTitle, goalDescription, keyResults, relevantPRs, config, retryCount + 1);
     }
     

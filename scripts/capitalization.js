@@ -172,7 +172,9 @@ async function identifyCapitalizableFeatures(monthlyPRs, config) {
   // Process each month
   for (const month of sortedMonths) {
     const prs = monthlyPRs[month];
-    const monthName = new Date(`${month}-01`).toLocaleString("default", {
+    // Parse the month key (YYYY-MM) and add 1 to the month to get the correct display
+    const [year, monthNum] = month.split('-');
+    const monthName = new Date(parseInt(year), parseInt(monthNum)-1, 1).toLocaleString("default", {
       month: "long",
       year: "numeric",
     });
@@ -318,28 +320,17 @@ Only include PRs that represent capitalizable work. If a PR is for bug fixes, ma
 // Main function
 async function main() {
   try {
-    // Check for --anthropic flag
+    // Load config for API key and user context
+    const config = loadConfig();
+    
+    // Check for --anthropic flag (for backward compatibility)
     const useAnthropicAPI = process.argv.includes("--anthropic");
 
-    // Load config for API key and user context
-    let config = null;
-    let anthropicApiKey = null;
-
-    if (useAnthropicAPI) {
-      config = loadConfig();
-
-      if (!config.anthropic_api_key) {
-        throw new Error("Missing anthropic_api_key in config.json");
-      }
-
-      anthropicApiKey = config.anthropic_api_key;
-
-      // Log user context if available
-      if (config.user_context) {
-        console.log(chalk.bold.blue("\nContext:"));
-        console.log(chalk.italic(config.user_context));
-        console.log();
-      }
+    // Log user context if available and using anthropic
+    if (useAnthropicAPI && config.user_context) {
+      console.log(chalk.bold.blue("\nContext:"));
+      console.log(chalk.italic(config.user_context));
+      console.log();
     }
 
     const processedPRs = loadProcessedPRs();
