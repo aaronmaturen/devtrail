@@ -19,7 +19,8 @@
     "review-package": "node scripts/generate-review-package.js",
     "clean": "node scripts/clean.js",
     "upward-review": "node scripts/upward-review.js",
-    "goals-progress": "node scripts/goals-progress.js"
+    "goals-progress": "node scripts/goals-progress.js",
+    "resume": "node scripts/resume.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",

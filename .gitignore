@@ -27,6 +27,9 @@ lerna-debug.log
 .yarn/install-state.gz
 .pnp.*
 
+# VS Code
+.vscode/
+
 # macOS
 .DS_Store
 .AppleDouble
