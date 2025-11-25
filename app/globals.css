@@ -1,0 +1,18 @@
+@import '@mantine/core/styles.css';
+@import '@mantine/notifications/styles.css';
+@import '@mantine/dates/styles.css';
+
+body {
+  font-family: Bahnschrift, 'DIN Alternate', 'Franklin Gothic Medium', 'Nimbus Sans Narrow', sans-serif-condensed, sans-serif;
+  font-weight: normal;
+  background-color: #fafaf7;
+}
+
+/* Woodland theme overrides */
+:root {
+  --woodland-bg: #fafaf7;
+  --woodland-card: #f8f4f0;
+  --woodland-border: #e3ebe1;
+  --woodland-text: #2f5a2f;
+  --woodland-muted: #8ba880;
+}

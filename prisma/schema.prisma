@@ -1,0 +1,350 @@
+// DevTrail Next.js - Enhanced Prisma Schema
+// Includes Job tracking, Config storage, and Review documents
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// Core Models
+// ============================================================================
+
+model Criterion {
+  id                    Int       @id
+  areaOfConcentration   String    @map("area_of_concentration")
+  subarea              String
+  description          String
+  prDetectable         Boolean   @map("pr_detectable")
+  evidenceCriteria     EvidenceCriterion[]
+
+  @@map("criteria")
+}
+
+model EvidenceEntry {
+  id          String   @id @default(cuid())
+  type        String   // PR, SLACK, REVIEW, MANUAL, JIRA
+  title       String
+  description String?
+  content     String   @map("content") // JSON string for flexible data
+  confidence  Float?
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // PR-specific fields (nullable for non-PR evidence)
+  prNumber    Int?     @map("pr_number")
+  prUrl       String?  @map("pr_url")
+  repository  String?  // e.g., "owner/repo"
+  mergedAt    DateTime? @map("merged_at")
+
+  // Slack-specific fields
+  slackLink   String?  @map("slack_link")
+
+  // PR metrics
+  additions   Int?     // Lines added
+  deletions   Int?     // Lines deleted
+  changedFiles Int?    @map("changed_files")
+  components  String?  // JSON array of components touched
+  metadata    String?  // JSON object for additional data (jira_key, jira_type, etc.)
+
+  // Relations
+  criteria    EvidenceCriterion[]
+  attachments Attachment[]
+
+  @@map("evidence_entries")
+  @@index([type])
+  @@index([prNumber, repository])
+  @@index([timestamp])
+}
+
+model EvidenceCriterion {
+  evidenceId   String  @map("evidence_id")
+  criterionId  Int     @map("criterion_id")
+  confidence   Float
+  explanation  String?
+
+  evidence     EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  criterion    Criterion     @relation(fields: [criterionId], references: [id])
+
+  @@id([evidenceId, criterionId])
+  @@map("evidence_criteria")
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  size         Int
+  path         String
+  evidenceId   String   @map("evidence_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  evidence     EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
+
+// ============================================================================
+// Report Models
+// ============================================================================
+
+model Report {
+  id          String     @id @default(cuid())
+  name        String
+  type        String     // EVIDENCE, SUMMARY, COMPREHENSIVE, CAPITALIZATION, COMPONENT_ANALYSIS, UPWARD, RESUME, REVIEW_PACKAGE
+  content     String     // Markdown content
+  metadata    String?    // JSON metadata
+
+  // Link to job that generated this report
+  jobId       String?    @map("job_id")
+
+  // Report statistics
+  evidenceCount Int?     @map("evidence_count")
+  criteriaCount Int?     @map("criteria_count")
+
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@map("reports")
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// Job Queue System (NEW)
+// ============================================================================
+
+model Job {
+  id          String    @id @default(cuid())
+  type        String    // GITHUB_SYNC, REPORT_GENERATION, GOAL_GENERATION, AI_ANALYSIS
+  status      String    // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+  progress    Int       @default(0) // 0-100
+  logs        String    @default("[]") // JSON array of log messages
+  result      String?   // JSON result data
+  error       String?   // Error message if failed
+  config      String?   // JSON config used for this job
+
+  startedAt   DateTime?  @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("jobs")
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// Configuration Storage (NEW)
+// ============================================================================
+
+model Config {
+  id          String   @id @default(cuid())
+  key         String   @unique // github_token, anthropic_api_key, repos, etc.
+  value       String   // JSON value
+  encrypted   Boolean  @default(false) // For sensitive data
+  description String?  // Human-readable description
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("configs")
+}
+
+// ============================================================================
+// Review Document Storage (NEW)
+// ============================================================================
+
+model ReviewDocument {
+  id          String   @id @default(cuid())
+  year        String   // "2024" or "2024-mid"
+  type        String   // EMPLOYEE, MANAGER
+  content     String   // Full markdown content
+  weight      Int      // Recency weight for analysis
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, type])
+  @@map("review_documents")
+  @@index([year])
+}
+
+// ============================================================================
+// Interactive Review Models
+// ============================================================================
+
+model ReviewSession {
+  id            String   @id @default(cuid())
+  status        String   // DRAFT, IN_PROGRESS, COMPLETED
+  currentStep   Int      @default(0) @map("current_step")
+  responses     ReviewResponse[]
+  componentData String?  @map("component_data") // JSON string
+  contextData   String?  @map("context_data")   // JSON string for goals, reviews, etc.
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("review_sessions")
+}
+
+model ReviewResponse {
+  id          String        @id @default(cuid())
+  sessionId   String        @map("session_id")
+  step        Int
+  questionKey String        @map("question_key") // accomplishments, improvement, goals
+  content     String        // The response content
+  aiGenerated Boolean       @default(false) @map("ai_generated")
+  revisions   Int           @default(0)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  session     ReviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("review_responses")
+}
+
+// ============================================================================
+// Goals Management Models
+// ============================================================================
+
+model Goal {
+  id              String   @id @default(cuid())
+  title           String
+  description     String   // Full SMART goal description
+  category        String   // DEVELOPMENT, LEADERSHIP, TECHNICAL, COMMUNICATION, etc.
+  status          String   @default("ACTIVE") // ACTIVE, COMPLETED, PAUSED, CANCELLED
+  priority        String   @default("MEDIUM") // HIGH, MEDIUM, LOW
+
+  // SMART criteria fields
+  specific        String   // What specifically will be accomplished
+  measurable      String   // How progress will be measured
+  achievable      String   // Why this goal is achievable
+  relevant        String   // How this aligns with career/org needs
+  timeBound       String   // Timeline and deadline
+
+  // Dates
+  startDate       DateTime @default(now()) @map("start_date")
+  targetDate      DateTime @map("target_date")
+  completedDate   DateTime? @map("completed_date")
+
+  // AI generation context
+  generatedFrom   String?  @map("generated_from") // JSON context used for AI generation
+
+  // Progress tracking
+  progressPercent Int      @default(0) @map("progress_percent") // 0-100
+
+  // Relations
+  milestones      GoalMilestone[]
+  progressEntries GoalProgress[]
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("goals")
+  @@index([status])
+  @@index([category])
+}
+
+model GoalMilestone {
+  id          String   @id @default(cuid())
+  goalId      String   @map("goal_id")
+  title       String
+  description String?
+  status      String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
+  targetDate  DateTime @map("target_date")
+  completedDate DateTime? @map("completed_date")
+
+  // Relations
+  goal        Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("goal_milestones")
+}
+
+model GoalProgress {
+  id          String   @id @default(cuid())
+  goalId      String   @map("goal_id")
+  progressPercent Int  @map("progress_percent") // 0-100
+  notes       String?  // Progress notes and accomplishments
+  evidence    String?  // JSON array of evidence IDs that support this progress
+
+  // AI analysis
+  aiSummary   String?  @map("ai_summary") // AI-generated progress summary
+
+  // Relations
+  goal        Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("goal_progress")
+}
+
+model GoalTemplate {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  category    String
+
+  // SMART template fields
+  specificTemplate    String @map("specific_template")
+  measurableTemplate  String @map("measurable_template")
+  achievableTemplate  String @map("achievable_template")
+  relevantTemplate    String @map("relevant_template")
+  timeBoundTemplate   String @map("time_bound_template")
+
+  // Usage tracking
+  usageCount  Int      @default(0) @map("usage_count")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("goal_templates")
+}
+
+// ============================================================================
+// Review Analysis Models (NEW)
+// ============================================================================
+
+model ReviewAnalysis {
+  id          String   @id @default(cuid())
+
+  // Review metadata
+  title       String
+  year        String?  // e.g., "2024" or "2024-mid"
+  reviewType  String   @map("review_type") // EMPLOYEE, MANAGER, PEER, SELF
+  source      String?  // Where the review came from (file name, uploaded, etc.)
+
+  // Original content
+  originalText String  @map("original_text") // Full review text
+
+  // AI Analysis Results
+  aiSummary   String   @map("ai_summary") // AI-generated summary
+  themes      String   // JSON array of themes/topics
+  strengths   String   // JSON array of identified strengths
+  growthAreas String   @map("growth_areas") // JSON array of growth areas
+  achievements String  // JSON array of key achievements
+
+  // Metadata
+  metadata    String?  // JSON for additional structured data
+
+  // Analysis quality metrics
+  confidenceScore Float? @map("confidence_score") // 0-100
+
+  // Relations to evidence
+  evidenceLinks String? @map("evidence_links") // JSON array of evidence IDs that relate to this review
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("review_analyses")
+  @@index([year])
+  @@index([reviewType])
+  @@index([createdAt])
+}

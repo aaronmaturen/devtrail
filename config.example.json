@@ -6,7 +6,7 @@
   "jira_api_token": "YOUR_JIRA_API_TOKEN",
   "jira_projects": ["ONE", "TWO"],
   "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY",
-  "claude_model": "claude-sonnet-4-0",
+  "claude_model": "claude-3-5-sonnet-20241022",
   "dry_run": true,
   "user_context": "I am a senior developer.I feel fulfilled by my work. I consistently contribute high-quality code, mentor junior developers, and help drive technical decisions that align with our organization's goals."
 }

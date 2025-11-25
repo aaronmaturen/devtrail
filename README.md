@@ -1,241 +1,384 @@
 # DevTrail
 
-Track your development journey through GitHub PRs and performance reviews. DevTrail is a powerful Node.js CLI tool that analyzes your GitHub pull requests and performance review documents to generate evidence for performance reviews, track capitalizable work, and set SMART career goals.
+> Performance review evidence tracking and career development platform powered by AI
 
-## Setup
+**Version 2.0** - Now a full-stack Next.js application with database integration!
 
-1. Clone this repository
-2. Run `npm install` to install dependencies
-3. Create a `config.json` file (see `config.example.json` for format)
+---
 
-## Required API Keys
+## ✨ What's New in v2.0
 
-### GitHub Token
+DevTrail has been completely rebuilt as a modern web application:
 
-Create a GitHub personal access token with the required permissions:
+- 🎨 **Web UI** - No more CLI scripts! Everything accessible through an intuitive web interface
+- 💾 **Database** - All data stored in SQLite via Prisma (programmatically queryable!)
+- ⚡ **Workers** - Background job processing for long-running tasks
+- 📊 **Real-time** - Live progress updates on sync and report generation
+- 🔄 **Job Queue** - Async processing with status tracking
+- 📱 **Modern Stack** - Next.js 16 + React 19 + Mantine UI + TypeScript
 
-[Create Token with Required Permissions](https://github.com/settings/tokens/new?scopes=repo,read:org,read:user,user:email&description=GH-Feedback%20CLI)
+---
 
-This link pre-selects:
+## 🚀 Quick Start
 
-- `repo` (full control of private repos)
-- `read:org` (read org membership)
-- `read:user` (read user profile data)
-- `user:email` (access email addresses)
+### Prerequisites
 
-### Jira API Token
+- Node.js 20+
+- npm or yarn
 
-If using Jira integration:
-
-1. Generate an API token from [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
-2. Add your Jira host, email, and token to `config.json`
-
-### Anthropic API Key
-
-For Claude integration:
-
-1. Get an API key from [Anthropic Console](https://console.anthropic.com/)
-2. Add your key to `config.json`
-3. Optionally specify a Claude model (defaults to "claude-sonnet-4")
-
-## Configuration
-
-Create a `config.json` file with:
-
-```json
-{
-  "github_token": "YOUR_GITHUB_TOKEN",
-  "repos": ["owner/repo1", "owner/repo2"],
-  "jira_host": "your-domain.atlassian.net",
-  "jira_email": "your-email@example.com",
-  "jira_api_token": "YOUR_JIRA_API_TOKEN",
-  "jira_projects": ["ONE", "TWO"],
-  "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY",
-  "claude_model": "claude-sonnet-4"
-}
-```
-
-## Usage
-
-DevTrail provides several commands for different purposes:
+### Installation
 
 ```bash
-# Collect PR evidence from GitHub
-npm run sync
+# Install dependencies
+npm install
 
-# Generate detailed evidence report from PRs
-npm run report
+# Set up database
+npm run db:generate
+npm run db:migrate
 
-# Generate enhanced report using both PRs and performance reviews
-npm run report-enhanced
-
-# Generate concise AI summary report
-npm run summary
-
-# Generate comprehensive performance summary
-npm run comprehensive-summary
-
-# Generate SMART career goals
-npm run goals
-
-# Track progress on goals
-npm run goals-progress
-
-# Generate software capitalization report
-npm run cap
-
-# Analyze component contributions and leadership
-npm run components
-
-# Generate complete performance review package
-npm run review-package
-
-# Run interactive review session
-node scripts/interactive-review.js
-
-# Clean data and reports directories
-npm run clean
+# Start development server
+npm run dev
 ```
 
-## Workflow Diagrams
+Then open **http://localhost:4000**
 
-### Overall Workflow
+---
 
-```mermaid
-graph TD
-    A[GitHub PRs] -->|sync.js| B[Processed PRs]
-    C[Jira Tickets] -->|sync.js| B
-    B -->|report.js| D[Evidence Report]
-    B -->|report.js --ai| E[AI Summary Report]
-    B -->|goals.js| F[SMART Goals]
-    B -->|component-analysis.js| G[Component Analysis]
-    H[Performance Reviews] -->|interactive-review.js| I[Interactive Review]
-    B -->|interactive-review.js| I
-    F -->|interactive-review.js| I
-    G -->|interactive-review.js| I
-    B -->|capitalization.js| J[Capitalization Report]
-    K[review-package.js] -->|Runs all scripts| L[Complete Package]
+## 🎯 Features
+
+### Evidence Tracking
+- **GitHub PRs** - Automatic sync with AI-powered criteria matching
+- **Jira Tickets** - Link tickets to PRs and track project work
+- **Slack Messages** - Add achievements from Slack (with screenshot analysis!)
+- **Manual Evidence** - Add custom achievements anytime
+
+### Analytics & Reports
+- **Component Analysis** - Identify code ownership and leadership
+- **Evidence Reports** - Detailed breakdown by performance criteria
+- **AI Summaries** - Concise narrative summaries of your work
+- **Capitalization Reports** - Track capitalizable software development
+
+### Goal Management
+- **SMART Goals** - AI-assisted goal generation based on your evidence
+- **Progress Tracking** - Automatic evidence-to-goal matching
+- **Milestone Planning** - Break goals into actionable milestones
+- **Progress Reports** - See how you're tracking against targets
+
+### Review Tools
+- **Interactive Reviews** - Guided performance review responses
+- **Upward Reviews** - Generate feedback for your manager
+- **Resume Generation** - Auto-generated resumes from your evidence
+- **Review Packages** - Complete performance review bundles
+
+---
+
+## 📁 Project Structure
+
 ```
+devtrail/
+├── app/                    # Next.js app routes
+│   ├── api/               # API endpoints
+│   ├── evidence/          # Evidence management UI
+│   ├── reports/           # Report generation UI
+│   ├── goals/             # Goal management UI
+│   └── analytics/         # Analytics dashboards
+├── lib/                    # Shared libraries
+│   ├── workers/           # Background job workers
+│   ├── services/          # Business logic
+│   └── db/                # Database utilities
+├── prisma/                 # Database schema and migrations
+│   └── schema.prisma      # Database models
+├── components/             # React components
+├── scripts/                # Admin and migration scripts
+└── docs/                   # Documentation
+```
+
+---
+
+## 🛠️ Configuration
+
+### Environment Variables
+
+Create a `.env` file in the root directory:
+
+```bash
+# Database
+DATABASE_URL="file:./prisma/dev.db"
+
+# GitHub
+GITHUB_TOKEN="your_github_personal_access_token"
+GITHUB_USERNAME="your_username"
+REPOS="owner/repo1,owner/repo2"
+
+# Jira (optional)
+JIRA_HOST="your-domain.atlassian.net"
+JIRA_EMAIL="your-email@example.com"
+JIRA_API_TOKEN="your_jira_api_token"
+JIRA_PROJECTS="ONE,TWO"
+
+# Anthropic (for AI features)
+ANTHROPIC_API_KEY="your_anthropic_api_key"
+CLAUDE_MODEL="claude-sonnet-4-20250514"
+
+# User Context (for personalized AI responses)
+USER_CONTEXT="I am a senior developer focused on..."
+```
+
+### Required API Keys
+
+#### GitHub Token
+Create a personal access token with these scopes:
+- `repo` (full control of private repos)
+- `read:org` (read org membership)
+- `read:user` (read user profile)
+- `user:email` (access email addresses)
+
+[Create Token](https://github.com/settings/tokens/new?scopes=repo,read:org,read:user,user:email&description=DevTrail)
+
+#### Anthropic API Key
+Get an API key from [Anthropic Console](https://console.anthropic.com/)
+
+#### Jira API Token (Optional)
+Generate from [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
+
+---
+
+## 📋 Available Commands
+
+### Development
+
+```bash
+npm run dev              # Start Next.js dev server (port 4000)
+npm run build            # Build for production
+npm run start            # Start production server
+npm run lint             # Run ESLint
+```
+
+### Database
+
+```bash
+npm run db:generate      # Generate Prisma client
+npm run db:migrate       # Run database migrations
+npm run db:push          # Push schema changes to database
+npm run db:studio        # Open Prisma Studio (database GUI)
+```
+
+### Workers
+
+```bash
+npm run worker           # Start background worker for job processing
+```
+
+### Data Migration
+
+```bash
+npm run import-data      # Import existing processed-prs.json
+npm run import-goals     # Import existing goals
+npm run migrate-reports  # Import old markdown reports to database
+```
+
+### Deprecated CLI Commands
+
+The following commands are deprecated. Use the web UI instead:
+
+```bash
+npm run sync             # ⚠️  Use http://localhost:4000/sync
+npm run report           # ⚠️  Use http://localhost:4000/reports
+npm run goals            # ⚠️  Use http://localhost:4000/goals
+npm run components       # ⚠️  Use http://localhost:4000/analytics
+# ... (see package.json for full list)
+```
+
+---
+
+## 🔄 Migration from v1.x
+
+If you're upgrading from the old CLI-based DevTrail:
+
+### 1. Import Existing Data
+
+```bash
+# Import processed PRs
+npm run import-data
+
+# Import old markdown reports
+npm run migrate-reports
+
+# Import goals from lattice directory
+npm run import-goals
+```
+
+### 2. Update Your Workflow
+
+**Old Way:**
+```bash
+npm run sync           # Sync GitHub
+npm run report --ai    # Generate report
+npm run goals          # Generate goals
+```
+
+**New Way:**
+1. Start the app: `npm run dev`
+2. Visit http://localhost:4000
+3. Use the web UI for all operations
+
+### 3. Configuration Changes
+
+**Old:** `config.json` in root
+**New:** `.env` file (see Configuration section above)
+
+### 4. Data Storage
+
+**Old:** JSON files in `/data/`, markdown in `/reports/`
+**New:** SQLite database in `/prisma/dev.db`
+
+**Benefits:**
+- ✅ Programmatically queryable
+- ✅ Relational data integrity
+- ✅ Full CRUD operations via API
+- ✅ Real-time updates
+- ✅ No more file conflicts
+
+---
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+- **Frontend**: Next.js 16, React 19, Mantine UI, Tailwind CSS
+- **Backend**: Next.js API Routes
+- **Database**: SQLite with Prisma ORM
+- **AI**: Anthropic Claude API
+- **Workers**: Node.js background processors
+- **Deployment**: Vercel-ready
 
 ### Data Flow
 
-```mermaid
-flowchart LR
-    subgraph External
-        GH[GitHub API]
-        JR[Jira API]
-        AI[Claude AI]
-    end
-    
-    subgraph Data
-        PR[processed-prs.json]
-        REV[Performance Reviews]
-    end
-    
-    subgraph Scripts
-        SYNC[sync.js]
-        COMP[component-analysis.js]
-        REP[report.js]
-        GOAL[goals.js]
-        CAP[capitalization.js]
-        INT[interactive-review.js]
-        PKG[review-package.js]
-    end
-    
-    GH --> SYNC
-    JR --> SYNC
-    SYNC --> PR
-    PR --> COMP
-    PR --> REP
-    PR --> GOAL
-    PR --> CAP
-    PR --> INT
-    REV --> INT
-    COMP --> INT
-    AI --> INT
-    AI --> GOAL
-    AI --> REP
-    PKG --> SYNC
-    PKG --> COMP
-    PKG --> REP
-    PKG --> GOAL
+```
+1. User Action (UI) → API Route
+2. API Route → Create Job (status: PENDING)
+3. Worker → Process Job (status: RUNNING)
+4. Worker → Save Results to Database
+5. Worker → Update Job (status: COMPLETED)
+6. UI → Poll for Updates → Display Results
 ```
 
-### Component Analysis
+### Database Models
 
-```mermaid
-flowchart TD
-    A[Processed PRs] --> B[Extract Components]
-    B --> C[Calculate Metrics]
-    C --> D[Determine Roles]
-    D --> E[Query GitHub API]
-    E --> F[Identify Contributors]
-    F --> G[Determine Component Lead]
-    G --> H[Generate AI Analysis]
-    H --> I[Create Report]
+- **EvidenceEntry** - PRs, Slack messages, manual evidence
+- **Criterion** - Performance review criteria
+- **Report** - Generated reports (stored as markdown)
+- **Goal** - SMART goals with milestones
+- **Job** - Async job queue
+- **Config** - Application configuration
+- **ReviewDocument** - Performance review documents
+- **ReviewAnalysis** - AI analysis results
+
+See `prisma/schema.prisma` for complete schema.
+
+---
+
+## 📖 Documentation
+
+- [Migration Plan](docs/MIGRATION_PLAN.md) - Detailed v1 → v2 migration guide
+- [Worker Setup](docs/WORKER_SETUP.md) - Background worker architecture
+- [Database Integration](docs/DATABASE_INTEGRATION_AUDIT.md) - Database design audit
+- [Google Drive Integration](docs/GOOGLE_DRIVE_INTEGRATION.md) - Import from Google Docs
+- [UI Integration Map](docs/UI_INTEGRATION_MAP.md) - UI component mapping
+
+---
+
+## 🧪 Development
+
+### Run Tests
+
+```bash
+npm test                 # Run test suite (coming soon)
 ```
 
-### Interactive Review
+### Database Workflows
 
-```mermaid
-flowchart TD
-    A[Load Data] --> B[Extract Component Data]
-    A --> C[Load PR Data]
-    A --> D[Load Performance Reviews]
-    A --> E[Load Goals]
-    B & C & D & E --> F[Display HR Guidelines]
-    F --> G[Show Component Analysis]
-    G --> H[Collect User Responses]
-    H --> I[Generate AI Suggestions]
-    I --> J[Refine Responses]
-    J --> K[Generate Review Document]
+```bash
+# View data
+npm run db:studio
+
+# Reset database (⚠️  deletes all data)
+rm prisma/dev.db
+npm run db:migrate
+
+# Create migration after schema changes
+npm run db:migrate
 ```
 
-For a dry run (limited PR processing):
+### Worker Development
 
-1. Add `"dry_run": true` to your `config.json`
-2. Run `npm run sync`
+The worker runs in a separate process and polls for jobs every minute:
 
-## How It Works
+```bash
+# Terminal 1: Next.js app
+npm run dev
 
-### Main PR Analysis
+# Terminal 2: Worker
+npm run worker
+```
 
-1. Loads criteria from `criteria.csv`
-2. Fetches closed/merged PRs from configured GitHub repos
-3. For each PR you've interacted with:
-   - Extracts Jira ticket info if present (including full description and comments)
-   - Sends PR details to Claude AI
-   - Identifies multiple matching review criteria with confidence scores
-   - Saves PR data with merge dates for future analysis
-4. Saves evidence to `data/processed-prs.json` with merge dates for timeline analysis
+For faster development, trigger workers manually via API or reduce poll interval.
 
-### Performance Review Integration
+---
 
-1. Organizes performance reviews in the `lattice` directory by year
-2. Automatically finds and loads all review files (employee and manager reviews)
-3. Analyzes review content to find evidence matching criteria
-4. Weighs evidence based on recency (newer reviews get higher weight)
-5. Combines PR evidence with review evidence for a complete performance picture
+## 🚢 Deployment
 
-### Reports
+### Vercel Deployment
 
-- **Standard Report**: Comprehensive evidence from PRs grouped by criteria
-- **Enhanced Report**: Combined evidence from both PRs and performance reviews
-- **AI Summary**: Concise bullet points summarizing your achievements
-- **Comprehensive Summary**: Narrative summary (max 7 paragraphs) highlighting key accomplishments, patterns, and growth areas
-- **Goals**: SMART career goals with milestones based on your strengths, growth areas, and future Jira tickets
-- **Goals Progress**: Track progress against previously set goals
-- **Capitalization**: Monthly breakdown of capitalizable work with hour estimates (based on Jira completion dates)
-- **Component Analysis**: Detailed breakdown of your component contributions and leadership roles
+```bash
+# Install Vercel CLI
+npm i -g vercel
 
-All reports are saved as timestamped markdown files in the `reports` directory.
+# Deploy
+vercel
 
-### Directory Structure
+# Set environment variables in Vercel dashboard
+# Add all .env variables
+```
 
-- `/data`: Processed PR data and other generated data files
-- `/lattice`: Performance review documents organized by year
-  - `/lattice/YYYY`: Annual reviews (e.g., 2024)
-  - `/lattice/YYYY-mid`: Mid-year reviews
-  - `/lattice/example`: Example templates for different review types
-- `/reports`: Generated reports with timestamps
-- `/scripts`: All script files
+### Cron Setup
+
+Configure Vercel cron to run worker:
+
+```json
+// vercel.json
+{
+  "crons": [{
+    "path": "/api/workers/process",
+    "schedule": "* * * * *"
+  }]
+}
+```
+
+---
+
+## 🤝 Contributing
+
+This is a personal project, but suggestions and bug reports are welcome!
+
+---
+
+## 📝 License
+
+ISC
+
+---
+
+## 🎉 Acknowledgments
+
+Built with:
+- [Anthropic Claude](https://anthropic.com) - AI analysis
+- [Next.js](https://nextjs.org) - React framework
+- [Prisma](https://prisma.io) - Database ORM
+- [Mantine](https://mantine.dev) - UI components
+- [Octokit](https://octokit.github.io/) - GitHub API
+- [Jira Client](https://www.npmjs.com/package/jira-client) - Jira API
+
+---
+
+**Questions?** Check the [documentation](docs/) or [open an issue](https://github.com/aaronmaturen/devtrail/issues).

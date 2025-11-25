@@ -447,7 +447,7 @@ async function main() {
         host: config.jira_host.replace(/^https?:\/\//, ""),
         username: config.jira_email,
         password: config.jira_api_token,
-        apiVersion: "2",
+        apiVersion: "3",
         strictSSL: true,
       });
     }

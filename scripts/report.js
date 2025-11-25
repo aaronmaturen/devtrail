@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 const { Anthropic } = require('@anthropic-ai/sdk');
+const { loadSlackEvidence } = require('./slack-evidence');
 
 // Paths
 const PROCESSED_PATH = path.join(__dirname, '..', 'data', 'processed-prs.json');
@@ -156,6 +157,9 @@ function loadCriteria() {
 // Group evidence by criterion
 function groupByCriterion(processedPRs, criteria) {
   const grouped = {};
+  
+  // Load Slack evidence
+  const slackEvidence = loadSlackEvidence() || [];
 
   // Initialize with all criteria in order
   Object.values(criteria).forEach(criterion => {
@@ -164,6 +168,8 @@ function groupByCriterion(processedPRs, criteria) {
       evidence: [],
       totalConfidence: 0,
       count: 0,
+      prCount: 0,
+      slackCount: 0,
       order: parseInt(criterion.id, 10) || 999 // Use ID for sorting
     };
   });
@@ -203,6 +209,7 @@ function groupByCriterion(processedPRs, criteria) {
 
             grouped[criterionId].totalConfidence += (item.confidence || 0);
             grouped[criterionId].count += 1;
+            grouped[criterionId].prCount += 1;
           }
         });
       } else if (pr.evidence && pr.evidence.criterion_id) {
@@ -232,9 +239,47 @@ function groupByCriterion(processedPRs, criteria) {
 
           grouped[criterionId].totalConfidence += 100;
           grouped[criterionId].count += 1;
+          grouped[criterionId].prCount += 1;
         }
       }
     });
+  });
+
+  // Process Slack evidence
+  slackEvidence.forEach(item => {
+    const criterionId = item.criterion_id;
+    if (criterionId && criterionId !== 'NONE' && criterionId !== 'ERROR') {
+      if (!grouped[criterionId]) {
+        // Handle case where criterion ID isn't in our criteria list
+        grouped[criterionId] = {
+          id: criterionId,
+          area: 'Unknown',
+          subarea: 'Unknown',
+          description: 'Unknown criterion',
+          evidence: [],
+          totalConfidence: 0,
+          count: 0,
+          order: parseInt(criterionId, 10) || 999
+        };
+      }
+
+      grouped[criterionId].evidence.push({
+        type: 'slack',
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        confidence: item.confidence || 0,
+        evidence: item.description,
+        slack_link: item.slack_link,
+        message_text: item.message_text,
+        screenshot_path: item.screenshot_path,
+        timestamp: item.timestamp
+      });
+
+      grouped[criterionId].totalConfidence += (item.confidence || 0);
+      grouped[criterionId].count += 1;
+      grouped[criterionId].slackCount += 1;
+    }
   });
 
   return grouped;
@@ -264,15 +309,22 @@ function printReport(grouped) {
         avgConfidence >= 60 ? chalk.yellow :
         chalk.red;
 
+      const evidenceTypes = [];
+      if (criterion.prCount > 0) evidenceTypes.push(`${criterion.prCount} PRs`);
+      if (criterion.slackCount > 0) evidenceTypes.push(`${criterion.slackCount} Slack`);
+      const evidenceTypeText = evidenceTypes.length > 0 ? evidenceTypes.join(', ') : 'No evidence';
+
       console.log(
         chalk.bold.cyan(`${criterion.id}: [${criterion.area} > ${criterion.subarea}]`) +
-        chalk.bold(` (${criterion.count} PRs, `) +
+        chalk.bold(` (${evidenceTypeText}, `) +
         confidenceColor(`Avg Confidence: ${avgConfidence}%`) +
         chalk.bold(')')
       );
       console.log(chalk.white(criterion.description));
 
-      markdownContent += `### ${criterion.id}: [${criterion.area} > ${criterion.subarea}] (${criterion.count} PRs, Avg Confidence: ${avgConfidence}%)\n\n`;
+      markdownContent += `### ${criterion.id}: [${criterion.area} > ${criterion.subarea}] (${evidenceTypeText}, Avg Confidence: ${avgConfidence}%)
+
+`;
       markdownContent += `${criterion.description}\n\n`;
     } else {
       // Check if this criterion is detectable from PR data
@@ -327,17 +379,67 @@ function printReport(grouped) {
           item.confidence >= 60 ? chalk.yellow :
           chalk.red;
 
-        console.log(
-          chalk.bold.white(`\n${i+1}. ${item.repo}#${item.pr_number}: `) +
-          chalk.white(item.pr_title) +
-          ' ' + confidenceColor(`(Confidence: ${item.confidence}%)`)
-        );
-        console.log(chalk.dim('─'.repeat(40)));
-        console.log(chalk.italic.yellow(item.evidence));
+        if (item.type === 'slack') {
+          // Handle Slack evidence
+          console.log(
+            chalk.bold.white(`
+${i+1}. [SLACK] ${item.title}`) +
+            ' ' + confidenceColor(`(Confidence: ${item.confidence}%)`)
+          );
+          console.log(chalk.dim('─'.repeat(40)));
+          console.log(chalk.italic.yellow(item.description));
+          console.log(chalk.dim(`Link: ${item.slack_link}`));
+          if (item.screenshot_path) {
+            console.log(chalk.dim(`Screenshot: ${path.basename(item.screenshot_path)}`));
+          }
 
-        markdownContent += `#### ${i+1}. ${item.repo}#${item.pr_number}: ${item.pr_title} (Confidence: ${item.confidence}%)\n\n`;
-        markdownContent += `${item.evidence}\n\n`;
-        markdownContent += '---\n\n';
+          markdownContent += `#### ${i+1}. [SLACK] ${item.title} (Confidence: ${item.confidence}%)
+
+`;
+          markdownContent += `${item.description}
+
+`;
+          markdownContent += `**Slack Link:** ${item.slack_link}
+
+`;
+          
+          if (item.screenshot_path) {
+            markdownContent += `**Screenshot:** ${path.basename(item.screenshot_path)}
+
+`;
+          }
+          
+          markdownContent += `**Message Text:**
+
+\`\`\`
+${item.message_text}
+\`\`\`
+
+`;
+          markdownContent += '---
+
+';
+        } else {
+          // Handle PR evidence
+          console.log(
+            chalk.bold.white(`
+${i+1}. ${item.repo}#${item.pr_number}: `) +
+            chalk.white(item.pr_title) +
+            ' ' + confidenceColor(`(Confidence: ${item.confidence}%)`)
+          );
+          console.log(chalk.dim('─'.repeat(40)));
+          console.log(chalk.italic.yellow(item.evidence));
+
+          markdownContent += `#### ${i+1}. ${item.repo}#${item.pr_number}: ${item.pr_title} (Confidence: ${item.confidence}%)
+
+`;
+          markdownContent += `${item.evidence}
+
+`;
+          markdownContent += '---
+
+';
+        }
       });
     } else {
       console.log(chalk.bold.red('\nNo evidence found for this criterion.'));
