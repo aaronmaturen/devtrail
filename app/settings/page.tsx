@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Container,
   Title,
@@ -28,6 +29,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconKey,
   IconBrandGithub,
+  IconBrandGoogle,
   IconRobot,
   IconCheck,
   IconX,
@@ -80,6 +82,8 @@ type DatabaseBackup = {
 };
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
 
@@ -88,6 +92,7 @@ export default function SettingsPage() {
     anthropic: false,
     github: false,
     jira: false,
+    google: false,
   });
 
   // Fetched data state
@@ -123,6 +128,10 @@ export default function SettingsPage() {
       jiraHost: '',
       jiraEmail: '',
       jiraApiToken: '',
+      // Google OAuth
+      googleClientId: '',
+      googleClientSecret: '',
+      googleDefaultFolderId: '',
       // Selections
       selectedModel: '',
       selectedRepos: [] as string[],
@@ -137,6 +146,33 @@ export default function SettingsPage() {
     loadUserContext();
     loadBackups();
   }, []);
+
+  // Handle Google OAuth callback
+  useEffect(() => {
+    const googleAuth = searchParams.get('google_auth');
+    const message = searchParams.get('message');
+
+    if (googleAuth === 'success') {
+      notifications.show({
+        title: 'Google Connected',
+        message: 'Successfully connected to Google. You can now sync documents to Google Docs.',
+        color: 'green',
+        icon: <IconCheck size={16} />,
+      });
+      // Reload config to update the keysConfigured state
+      loadConfig();
+      // Clear the URL params
+      router.replace('/settings');
+    } else if (googleAuth === 'error') {
+      notifications.show({
+        title: 'Google OAuth Failed',
+        message: message || 'Failed to connect to Google. Please try again.',
+        color: 'red',
+        icon: <IconX size={16} />,
+      });
+      router.replace('/settings');
+    }
+  }, [searchParams, router]);
 
   const loadConfig = async () => {
     setConfigLoading(true);
@@ -155,7 +191,13 @@ export default function SettingsPage() {
           anthropic: !!configMap.anthropic_api_key,
           github: !!configMap.github_token,
           jira: !!configMap.jira_host && !!configMap.jira_email && !!configMap.jira_api_token,
+          google: !!configMap.google_client_id && !!configMap.google_client_secret && !!configMap.google_refresh_token,
         });
+
+        // Load Google default folder ID (non-sensitive field) for display
+        if (configMap.google_default_folder_id) {
+          form.setFieldValue('googleDefaultFolderId', configMap.google_default_folder_id);
+        }
 
         // Load Jira host and email (non-sensitive fields) for display
         if (configMap.jira_host) {
@@ -316,6 +358,32 @@ export default function SettingsPage() {
         );
       }
 
+      // Google OAuth credentials
+      if (form.values.googleClientId) {
+        configs.push({
+          key: 'google_client_id',
+          value: form.values.googleClientId,
+          encrypted: false,
+          description: 'Google OAuth Client ID',
+        });
+      }
+      if (form.values.googleClientSecret) {
+        configs.push({
+          key: 'google_client_secret',
+          value: form.values.googleClientSecret,
+          encrypted: true,
+          description: 'Google OAuth Client Secret',
+        });
+      }
+      if (form.values.googleDefaultFolderId) {
+        configs.push({
+          key: 'google_default_folder_id',
+          value: form.values.googleDefaultFolderId,
+          encrypted: false,
+          description: 'Default Google Drive folder for documents',
+        });
+      }
+
       await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -339,6 +407,9 @@ export default function SettingsPage() {
         jiraHost: form.values.jiraHost, // Keep these for convenience
         jiraEmail: form.values.jiraEmail,
         jiraApiToken: '',
+        googleClientId: '',
+        googleClientSecret: '',
+        googleDefaultFolderId: form.values.googleDefaultFolderId, // Keep for convenience
         selectedModel: form.values.selectedModel,
         selectedRepos: form.values.selectedRepos,
         selectedProjects: form.values.selectedProjects,
@@ -908,6 +979,76 @@ export default function SettingsPage() {
                 data-form-type="other"
                 autoComplete="off"
                 {...form.getInputProps('jiraApiToken')}
+              />
+            </Stack>
+
+            <Divider />
+
+            {/* Google Docs/Drive Configuration */}
+            <Stack gap="md">
+              <Group>
+                <IconBrandGoogle size={18} />
+                <Text fw={500}>Google Docs/Drive</Text>
+                {keysConfigured.google && (
+                  <Badge color="green" size="sm" variant="light">Connected</Badge>
+                )}
+              </Group>
+              <Alert icon={<IconAlertCircle size={16} />} color="blue" variant="light">
+                <Text size="sm">
+                  <strong>Setup:</strong> Create OAuth credentials at{' '}
+                  <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">
+                    Google Cloud Console
+                  </a>
+                  . Add <code>http://localhost:3000/api/auth/google/callback</code> as an authorized redirect URI.
+                </Text>
+              </Alert>
+              <TextInput
+                label="OAuth Client ID"
+                placeholder={keysConfigured.google ? '••••••••••••••••••••' : 'your-client-id.apps.googleusercontent.com'}
+                description="From Google Cloud Console > APIs & Services > Credentials"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
+                autoComplete="off"
+                {...form.getInputProps('googleClientId')}
+              />
+              <PasswordInput
+                label="OAuth Client Secret"
+                placeholder={keysConfigured.google ? '••••••••••••••••••••' : 'GOCSPX-...'}
+                description="The client secret from your OAuth credentials"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
+                autoComplete="off"
+                {...form.getInputProps('googleClientSecret')}
+              />
+              {keysConfigured.google ? (
+                <Alert color="green" variant="light" icon={<IconCheck size={16} />}>
+                  Google is connected. Click below to re-authorize if needed.
+                </Alert>
+              ) : (
+                <Alert color="gray" variant="light">
+                  After saving your Client ID and Secret above, click the button below to authorize.
+                </Alert>
+              )}
+              <Button
+                component="a"
+                href="/api/auth/google"
+                variant={keysConfigured.google ? 'light' : 'filled'}
+                color={keysConfigured.google ? 'gray' : 'blue'}
+                leftSection={<IconBrandGoogle size={16} />}
+              >
+                {keysConfigured.google ? 'Re-authorize with Google' : 'Connect with Google'}
+              </Button>
+              <TextInput
+                label="Default Folder ID (Optional)"
+                placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz"
+                description="Google Drive folder ID where documents will be created. Leave empty to use root."
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
+                autoComplete="off"
+                {...form.getInputProps('googleDefaultFolderId')}
               />
             </Stack>
 

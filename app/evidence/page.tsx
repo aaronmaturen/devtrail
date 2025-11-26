@@ -15,9 +15,8 @@ import {
   SimpleGrid,
   Paper,
   Divider,
-  Loader,
-  Center,
   Menu,
+  TextInput,
 } from "@mantine/core";
 import {
   IconPlus,
@@ -27,8 +26,11 @@ import {
   IconEdit,
   IconChevronDown,
   IconTicket,
+  IconSearch,
 } from "@tabler/icons-react";
+import { useDebouncedValue } from "@mantine/hooks";
 import SlackEvidenceModal from "@/components/SlackEvidenceModal";
+import { EvidencePageSkeleton } from "@/components/skeletons";
 
 type Evidence = {
   id: string;
@@ -76,34 +78,57 @@ export default function EvidencePage() {
   const [loading, setLoading] = useState(true);
   const [slackModalOpened, setSlackModalOpened] = useState(false);
   const [criteria, setCriteria] = useState<Criterion[]>([]);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const [totalResults, setTotalResults] = useState(0);
 
+  // Fetch criteria once on mount
   useEffect(() => {
-    async function fetchData() {
+    async function fetchCriteria() {
       try {
-        const [evidenceResponse, criteriaResponse] = await Promise.all([
-          fetch("/api/evidence?limit=50"),
-          fetch("/api/criteria"),
-        ]);
+        const response = await fetch("/api/criteria");
+        const data = await response.json();
+        setCriteria(data.criteria ?? []);
+      } catch (error) {
+        console.error("Failed to fetch criteria:", error);
+      }
+    }
 
-        const evidenceData = await evidenceResponse.json();
-        const criteriaData = await criteriaResponse.json();
+    fetchCriteria();
+  }, []);
 
-        setEvidence(evidenceData.evidence ?? []);
-        setCriteria(criteriaData.criteria ?? []);
+  // Fetch evidence when search changes
+  useEffect(() => {
+    async function fetchEvidence() {
+      try {
+        setLoading(true);
+
+        // Build query params
+        const params = new URLSearchParams();
+        params.set("limit", "50");
+        if (debouncedSearch) {
+          params.set("search", debouncedSearch);
+        }
+
+        const response = await fetch(`/api/evidence?${params}`);
+        const data = await response.json();
+
+        setEvidence(data.evidence ?? []);
+        setTotalResults(data.total ?? 0);
 
         // Use statistics from API response
-        if (evidenceData.statistics) {
-          setStats(evidenceData.statistics);
+        if (data.statistics) {
+          setStats(data.statistics);
         }
       } catch (error) {
-        console.error("Failed to fetch data:", error);
+        console.error("Failed to fetch evidence:", error);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchData();
-  }, []);
+    fetchEvidence();
+  }, [debouncedSearch]);
 
   const handleSlackSuccess = () => {
     // Refresh evidence list
@@ -155,12 +180,23 @@ export default function EvidencePage() {
   };
 
   // Type config for mapping evidence types to display - used for badges/icons
-  const typeConfig: Record<string, { color: string; icon: typeof IconBrandGithub; label: string }> = {
+  const typeConfig: Record<
+    string,
+    { color: string; icon: typeof IconBrandGithub; label: string }
+  > = {
     // GitHub types
     PR: { color: "brand", icon: IconBrandGithub, label: "GitHub PR" },
     GITHUB_PR: { color: "brand", icon: IconBrandGithub, label: "GitHub PR" },
-    GITHUB_ISSUE: { color: "brand", icon: IconBrandGithub, label: "GitHub Issue" },
-    PR_AUTHORED: { color: "brand", icon: IconBrandGithub, label: "PR Authored" },
+    GITHUB_ISSUE: {
+      color: "brand",
+      icon: IconBrandGithub,
+      label: "GitHub Issue",
+    },
+    PR_AUTHORED: {
+      color: "brand",
+      icon: IconBrandGithub,
+      label: "PR Authored",
+    },
     PR_REVIEWED: { color: "cyan", icon: IconBrandGithub, label: "PR Reviewed" },
     ISSUE_CREATED: { color: "teal", icon: IconBrandGithub, label: "Issue" },
     // Jira types
@@ -174,13 +210,7 @@ export default function EvidencePage() {
   };
 
   if (loading) {
-    return (
-      <Container size="xl" py="xl">
-        <Center style={{ height: "50vh" }}>
-          <Loader size="xl" />
-        </Center>
-      </Container>
-    );
+    return <EvidencePageSkeleton />;
   }
 
   return (
@@ -191,8 +221,8 @@ export default function EvidencePage() {
           <div>
             <Title order={1}>Evidence</Title>
             <Text c="dimmed" size="sm">
-              {stats.github + stats.slack + stats.reviews + stats.manual + stats.jira} total
-              evidence entries
+              {totalResults} result{totalResults !== 1 ? "s" : ""}
+              {search && ` for "${search}"`}
             </Text>
           </div>
           <Group>
@@ -223,6 +253,15 @@ export default function EvidencePage() {
             </Menu>
           </Group>
         </Group>
+
+        {/* Search Bar */}
+        <TextInput
+          placeholder="Search evidence..."
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+          style={{ maxWidth: 400 }}
+        />
 
         {/* Slack Evidence Modal */}
         <SlackEvidenceModal

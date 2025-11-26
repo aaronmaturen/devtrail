@@ -9,12 +9,12 @@ import {
   Card,
   Stack,
   Center,
-  Loader,
   Alert,
 } from '@mantine/core';
 import { IconFileAnalytics } from '@tabler/icons-react';
 import ReviewAnalysisForm from '@/components/ReviewAnalysisForm';
 import ReviewAnalysisDisplay from '@/components/ReviewAnalysisDisplay';
+import { ReviewsPageSkeleton } from '@/components/skeletons';
 
 interface ReviewAnalysis {
   id: string;
@@ -86,6 +86,10 @@ export default function ReviewsPage() {
     }
   };
 
+  if (isLoading) {
+    return <ReviewsPageSkeleton />;
+  }
+
   return (
     <Container size="xl" py="xl" style={{ minHeight: '100vh' }}>
       <Stack gap="lg">
@@ -116,18 +120,8 @@ export default function ReviewsPage() {
           </Alert>
         )}
 
-        {/* Loading */}
-        {isLoading && (
-          <Center py="xl">
-            <Stack align="center" gap="sm">
-              <Loader size="xl" />
-              <Text c="dimmed">Loading analyses...</Text>
-            </Stack>
-          </Center>
-        )}
-
         {/* Empty State */}
-        {!isLoading && analyses.length === 0 && (
+        {analyses.length === 0 && (
           <Center py="xl">
             <Stack align="center" gap="md">
               <IconFileAnalytics size={64} color="gray" stroke={1.5} />
@@ -145,7 +139,7 @@ export default function ReviewsPage() {
         )}
 
         {/* Analyses List */}
-        {!isLoading && analyses.length > 0 && (
+        {analyses.length > 0 && (
           <Stack gap="md">
             <Title order={2}>
               {analyses.length} {analyses.length === 1 ? 'Analysis' : 'Analyses'}

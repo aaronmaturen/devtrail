@@ -1,13 +1,11 @@
 import { prisma } from '../db/prisma';
-import { processGoogleDriveSyncJob } from './google-drive-sync';
-import { processReviewAnalysisJob } from './review-analysis';
-import { processAgentGitHubSync, processAgentJiraSync } from './agent-sync';
-
-// Legacy job types - these are deprecated, use AGENT_* types instead
-const LEGACY_JOB_ERROR = 'This job type is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.';
+import { processJob, isJobTypeRegistered, isLegacyJobType } from './job-registry';
 
 /**
- * Job processor that routes jobs to appropriate handlers based on type
+ * Job processor that processes pending jobs using the job registry
+ *
+ * This file provides utilities for batch processing and job management.
+ * The actual job routing is handled by job-registry.ts
  */
 
 export interface ProcessJobsResult {
@@ -49,100 +47,57 @@ export async function processPendingJobs(): Promise<ProcessJobsResult> {
       console.log(`Processing job ${job.id} (type: ${job.type})`);
 
       try {
-        // Route to appropriate handler based on job type
-        switch (job.type) {
-          case 'GITHUB_SYNC':
-          case 'JIRA_SYNC':
-          case 'REPORT_GENERATION':
-          case 'GOAL_PROGRESS':
-          case 'GOAL_GENERATION':
-            // Legacy job types - mark as failed with deprecation message
-            await prisma.job.update({
-              where: { id: job.id },
-              data: {
-                status: 'FAILED',
-                error: LEGACY_JOB_ERROR,
-                completedAt: new Date(),
-              },
-            });
-            result.failed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
+        // Check for legacy job types
+        if (isLegacyJobType(job.type)) {
+          const error = `Job type '${job.type}' is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.`;
+          await prisma.job.update({
+            where: { id: job.id },
+            data: {
               status: 'FAILED',
-              error: LEGACY_JOB_ERROR,
-            });
-            break;
-
-          case 'GOOGLE_DRIVE_SYNC':
-            await processGoogleDriveSyncJob(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
-          case 'REVIEW_ANALYSIS':
-            await processReviewAnalysisJob(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
-          case 'AI_ANALYSIS':
-            // TODO: Implement AI analysis worker
-            console.warn(`AI analysis worker not yet implemented`);
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'PENDING',
-              error: 'Worker not yet implemented',
-            });
-            break;
-
-          case 'AGENT_GITHUB_SYNC':
-            await processAgentGitHubSync(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
-          case 'AGENT_JIRA_SYNC':
-            await processAgentJiraSync(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
-          default:
-            console.error(`Unknown job type: ${job.type}`);
-            await prisma.job.update({
-              where: { id: job.id },
-              data: {
-                status: 'FAILED',
-                error: `Unknown job type: ${job.type}`,
-                completedAt: new Date(),
-              },
-            });
-            result.failed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'FAILED',
-              error: `Unknown job type: ${job.type}`,
-            });
+              error,
+              completedAt: new Date(),
+            },
+          });
+          result.failed++;
+          result.jobs.push({
+            id: job.id,
+            type: job.type,
+            status: 'FAILED',
+            error,
+          });
+          continue;
         }
+
+        // Check if job type is registered
+        if (!isJobTypeRegistered(job.type)) {
+          const error = `Unknown job type: ${job.type}`;
+          console.error(error);
+          await prisma.job.update({
+            where: { id: job.id },
+            data: {
+              status: 'FAILED',
+              error,
+              completedAt: new Date(),
+            },
+          });
+          result.failed++;
+          result.jobs.push({
+            id: job.id,
+            type: job.type,
+            status: 'FAILED',
+            error,
+          });
+          continue;
+        }
+
+        // Process using the registry
+        await processJob(job.id, job.type);
+        result.processed++;
+        result.jobs.push({
+          id: job.id,
+          type: job.type,
+          status: 'COMPLETED',
+        });
       } catch (error) {
         console.error(`Error processing job ${job.id}:`, error);
 
@@ -199,45 +154,8 @@ export async function processJobById(jobId: string): Promise<void> {
 
   console.log(`Processing job ${job.id} (type: ${job.type})`);
 
-  // Route to appropriate handler
-  switch (job.type) {
-    case 'GITHUB_SYNC':
-    case 'JIRA_SYNC':
-    case 'REPORT_GENERATION':
-    case 'GOAL_PROGRESS':
-    case 'GOAL_GENERATION':
-      throw new Error(LEGACY_JOB_ERROR);
-
-    case 'GOOGLE_DRIVE_SYNC':
-      await processGoogleDriveSyncJob(job.id);
-      break;
-
-    case 'REVIEW_ANALYSIS':
-      await processReviewAnalysisJob(job.id);
-      break;
-
-    case 'AI_ANALYSIS':
-      throw new Error('AI analysis worker not yet implemented');
-
-    case 'AGENT_GITHUB_SYNC':
-      await processAgentGitHubSync(job.id);
-      break;
-
-    case 'AGENT_JIRA_SYNC':
-      await processAgentJiraSync(job.id);
-      break;
-
-    default:
-      await prisma.job.update({
-        where: { id: job.id },
-        data: {
-          status: 'FAILED',
-          error: `Unknown job type: ${job.type}`,
-          completedAt: new Date(),
-        },
-      });
-      throw new Error(`Unknown job type: ${job.type}`);
-  }
+  // Process using the registry (it handles legacy and unknown types)
+  await processJob(job.id, job.type);
 }
 
 /**

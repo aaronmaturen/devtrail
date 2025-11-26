@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Version3Client } from 'jira.js';
-import { prisma } from '@/lib/db/prisma';
+import { getJiraCredentials } from '@/lib/ai/config';
 
 export const runtime = 'nodejs';
 
@@ -10,23 +10,22 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get Jira config
-    const [hostConfig, emailConfig, tokenConfig] = await Promise.all([
-      prisma.config.findUnique({ where: { key: 'jira_host' } }),
-      prisma.config.findUnique({ where: { key: 'jira_email' } }),
-      prisma.config.findUnique({ where: { key: 'jira_api_token' } }),
-    ]);
+    // Get Jira credentials from centralized config
+    let host: string;
+    let email: string;
+    let token: string;
 
-    if (!hostConfig?.value || !emailConfig?.value || !tokenConfig?.value) {
+    try {
+      const credentials = await getJiraCredentials();
+      host = credentials.host;
+      email = credentials.email;
+      token = credentials.apiToken;
+    } catch (error) {
       return NextResponse.json(
         { error: 'Jira credentials not fully configured' },
         { status: 400 }
       );
     }
-
-    const host = JSON.parse(hostConfig.value);
-    const email = JSON.parse(emailConfig.value);
-    const token = JSON.parse(tokenConfig.value);
 
     // Initialize Jira client
     const jira = new Version3Client({

@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCompanyFramework } from '@/lib/services/review-context';
-import { getConfiguredModelId } from '@/lib/ai/config';
+import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
+import {
+  encodeEvidence,
+  encodeGoals,
+  encodeReviewAnalyses,
+  mapEvidenceForPrompt,
+  mapGoalsForPrompt,
+  mapReviewAnalysesForPrompt,
+  TOON_FORMAT_EXPLANATION,
+} from '@/lib/utils/toon';
 
 /**
  * POST /api/report-builder/[id]/blocks/[blockId]/generate
@@ -37,17 +46,8 @@ export async function POST(
     // Parse context config
     const contextConfig = JSON.parse(document.contextConfig || '{}');
 
-    // Get API key from config
-    const apiKeyConfig = await prisma.config.findUnique({
-      where: { key: 'anthropic_api_key' },
-    });
-
-    if (!apiKeyConfig?.value) {
-      return NextResponse.json(
-        { error: 'Anthropic API key not configured' },
-        { status: 400 }
-      );
-    }
+    // Get API key from centralized config
+    const apiKey = await getAnthropicApiKey();
 
     // Gather context based on document config
     const context = await gatherContext(contextConfig);
@@ -82,7 +82,7 @@ export async function POST(
 
     // Call Claude API
     const anthropic = new Anthropic({
-      apiKey: JSON.parse(apiKeyConfig.value),
+      apiKey,
     });
 
     const response = await anthropic.messages.create({
@@ -268,7 +268,7 @@ async function gatherContext(contextConfig: any) {
 }
 
 /**
- * Build system prompt with gathered context
+ * Build system prompt with gathered context using TOON format for efficiency
  */
 function buildSystemPrompt(context: any, contextConfig: any): string {
   let systemPrompt = `You are an expert performance review assistant helping a software engineer craft compelling content for their performance review.
@@ -285,6 +285,8 @@ function buildSystemPrompt(context: any, contextConfig: any): string {
 - Focus on impact and outcomes, not just activities
 - Include metrics and quantifiable results where available
 - Align with engineering excellence and company values
+
+${TOON_FORMAT_EXPLANATION}
 
 `;
 
@@ -304,94 +306,46 @@ ${context.companyFramework}
 `;
   }
 
-  // Add evidence summary
+  // Add evidence summary using TOON format
   if (context.evidence.length > 0) {
-    systemPrompt += `## Work Evidence (${context.evidence.length} items)
+    const mappedEvidence = mapEvidenceForPrompt(context.evidence.slice(0, 50));
+    const toonEvidence = encodeEvidence(mappedEvidence);
+    systemPrompt += `## Work Evidence (${context.evidence.length} items, TOON format)
+\`\`\`toon
+${toonEvidence}
+\`\`\`
+
 `;
-    context.evidence.slice(0, 30).forEach((e: any) => {
-      const title = e.githubPr?.title || e.jiraTicket?.summary || e.manualTitle || e.summary;
-      const type = e.type;
-      const date = e.occurredAt?.toISOString().split('T')[0];
-      systemPrompt += `- [${type}] ${title} (${date})\n`;
-      if (e.criteria?.length > 0) {
-        const criteria = e.criteria.map((c: any) => c.criterion.subarea).join(', ');
-        systemPrompt += `  Criteria: ${criteria}\n`;
-      }
-    });
-    systemPrompt += '\n';
   }
 
-  // Add goals
+  // Add goals using TOON format
   if (context.goals.length > 0) {
-    systemPrompt += `## Career Goals
+    const mappedGoals = mapGoalsForPrompt(context.goals);
+    const toonGoals = encodeGoals(mappedGoals);
+    systemPrompt += `## Career Goals (TOON format)
+\`\`\`toon
+${toonGoals}
+\`\`\`
+
 `;
-    context.goals.forEach((g: any) => {
-      systemPrompt += `- ${g.title} (${g.status}, ${g.progressPercent}% complete)\n`;
-      systemPrompt += `  ${g.description}\n`;
-    });
-    systemPrompt += '\n';
   }
 
-  // Add AI-analyzed review insights (structured, more useful than raw content)
+  // Add AI-analyzed review insights using TOON format
   if (context.reviewAnalyses && context.reviewAnalyses.length > 0) {
-    // Separate manager and other reviews for emphasis
-    const managerAnalyses = context.reviewAnalyses.filter((r: any) => r.reviewType === 'MANAGER');
-    const otherAnalyses = context.reviewAnalyses.filter((r: any) => r.reviewType !== 'MANAGER');
+    const mappedAnalyses = mapReviewAnalysesForPrompt(context.reviewAnalyses);
+    const toonAnalyses = encodeReviewAnalyses(mappedAnalyses);
+    systemPrompt += `## Review Analyses (TOON format)
+\`\`\`toon
+${toonAnalyses}
+\`\`\`
 
-    if (managerAnalyses.length > 0) {
-      systemPrompt += `## IMPORTANT: Manager Feedback (Weight this heavily in your responses)
 `;
-      managerAnalyses.forEach((r: any) => {
-        systemPrompt += `### ${r.year || 'Recent'} Manager Review: ${r.title}\n`;
-        systemPrompt += `**Summary**: ${r.aiSummary}\n`;
-
-        const themes = JSON.parse(r.themes || '[]');
-        if (themes.length > 0) {
-          systemPrompt += `**Key Themes**: ${themes.join(', ')}\n`;
-        }
-
-        const strengths = JSON.parse(r.strengths || '[]');
-        if (strengths.length > 0) {
-          systemPrompt += `**Strengths Highlighted**:\n`;
-          strengths.forEach((s: string) => systemPrompt += `- ${s}\n`);
-        }
-
-        const growthAreas = JSON.parse(r.growthAreas || '[]');
-        if (growthAreas.length > 0) {
-          systemPrompt += `**Growth Areas Identified**:\n`;
-          growthAreas.forEach((g: string) => systemPrompt += `- ${g}\n`);
-        }
-
-        const achievements = JSON.parse(r.achievements || '[]');
-        if (achievements.length > 0) {
-          systemPrompt += `**Achievements Noted**:\n`;
-          achievements.forEach((a: string) => systemPrompt += `- ${a}\n`);
-        }
-        systemPrompt += '\n';
-      });
-    }
-
-    if (otherAnalyses.length > 0) {
-      systemPrompt += `## Other Review Context
-`;
-      otherAnalyses.forEach((r: any) => {
-        systemPrompt += `### ${r.year || 'Recent'} ${r.reviewType} Review: ${r.title}\n`;
-        systemPrompt += `**Summary**: ${r.aiSummary}\n`;
-
-        const themes = JSON.parse(r.themes || '[]');
-        if (themes.length > 0) {
-          systemPrompt += `**Themes**: ${themes.join(', ')}\n`;
-        }
-        systemPrompt += '\n';
-      });
-    }
   }
 
-  // Add raw review documents as fallback/additional context (truncated)
-  if (context.reviews.length > 0) {
-    // Only include raw reviews if we don't have analyses, or limit to manager reviews
+  // Add raw review documents as fallback (keep as text since it's narrative)
+  if (context.reviews.length > 0 && (!context.reviewAnalyses || context.reviewAnalyses.length === 0)) {
     const managerReviews = context.reviews.filter((r: any) => r.type === 'MANAGER');
-    if (managerReviews.length > 0 && (!context.reviewAnalyses || context.reviewAnalyses.length === 0)) {
+    if (managerReviews.length > 0) {
       systemPrompt += `## Raw Manager Review Content
 `;
       managerReviews.slice(0, 2).forEach((r: any) => {

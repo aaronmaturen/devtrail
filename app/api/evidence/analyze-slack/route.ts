@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/db/prisma';
 import { getAnthropicApiKey, MODEL_CONFIGS } from '@/lib/ai/config';
+import {
+  encodeCriteria,
+  mapCriteriaForPrompt,
+  TOON_FORMAT_EXPLANATION,
+} from '@/lib/utils/toon';
 
 /**
  * POST /api/evidence/analyze-slack
@@ -42,21 +47,24 @@ export async function POST(request: NextRequest) {
       orderBy: { id: 'asc' },
     });
 
-    // Format criteria for AI prompt
-    const criteriaList = criteria
-      .map((c) => `${c.id}: ${c.areaOfConcentration} > ${c.subarea} - ${c.description}`)
-      .join('\n');
+    // Format criteria in TOON format for token efficiency
+    const criteriaForPrompt = mapCriteriaForPrompt(criteria);
+    const toonCriteria = encodeCriteria(criteriaForPrompt);
 
     // Construct AI prompt
     const prompt = `You are analyzing a Slack message for a performance review evidence collection system.
+
+${TOON_FORMAT_EXPLANATION}
 
 Please analyze the following Slack message and extract:
 1. A clear, concise title (2-8 words) that captures the main achievement or contribution
 2. A description (1-3 sentences) that explains the impact and context
 3. The top 1-3 most relevant performance criteria IDs from the list below, with confidence scores
 
-Available Performance Criteria:
-${criteriaList}
+Available Performance Criteria (TOON format):
+\`\`\`toon
+${toonCriteria}
+\`\`\`
 
 Slack Message:
 ${messageText}

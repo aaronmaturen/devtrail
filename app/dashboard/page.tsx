@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Container,
   Title,
@@ -9,7 +9,6 @@ import {
   Group,
   Stack,
   Button,
-  Loader,
   Alert,
   Tabs,
   Badge,
@@ -19,7 +18,10 @@ import {
   Card,
   Table,
   ActionIcon,
+  Loader,
+  Divider,
 } from "@mantine/core";
+import { Fragment } from "react";
 import {
   IconChartBar,
   IconGitBranch,
@@ -32,8 +34,13 @@ import {
   IconAlertCircle,
   IconClock,
   IconChecks,
+  IconRefresh,
+  IconBrandGoogleDrive,
+  IconExternalLink,
 } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import AdminPanel from "@/components/AdminPanel";
+import { MonthlyInsightCard, MonthlyInsight } from "@/components/MonthlyInsightCard";
 import {
   BarChart,
   Bar,
@@ -52,6 +59,7 @@ import {
   Scatter,
 } from "recharts";
 import { format, subMonths } from "date-fns";
+import { DashboardPageSkeleton } from "@/components/skeletons";
 
 interface ComponentData {
   name: string;
@@ -112,6 +120,12 @@ interface Repository {
   total_prs: number;
   active_prs: number;
   latest_activity: string | null;
+  earliest_activity: string | null;
+}
+
+interface DateRange {
+  earliest: string | null;
+  latest: string | null;
 }
 
 interface TimeSeriesData {
@@ -159,18 +173,26 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filter state
-  const [dateFrom, setDateFrom] = useState<string>(
-    format(subMonths(new Date(), 12), "yyyy-MM-dd")
-  );
+  // Filter state - dateFrom starts empty and gets set from earliest PR
+  const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>(
     format(new Date(), "yyyy-MM-dd")
   );
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [selectedRepositories, setSelectedRepositories] = useState<string[]>(
     []
   );
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Monthly insights state
+  const [monthlyInsights, setMonthlyInsights] = useState<MonthlyInsight[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [generatingMonths, setGeneratingMonths] = useState<Set<string>>(new Set());
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
+  const [syncingToGoogleDocs, setSyncingToGoogleDocs] = useState(false);
+  const [googleDocsUrl, setGoogleDocsUrl] = useState<string | null>(null);
+  const insightRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Load initial data
   useEffect(() => {
@@ -191,10 +213,12 @@ export default function DashboardPage() {
     }
   };
 
-  // Load analytics data when filters change
+  // Load analytics data when filters change (wait for dateFrom to be set)
   useEffect(() => {
+    if (!dateFrom) return; // Wait until dateFrom is set from earliest PR
     loadAnalyticsData();
     loadTimeSeriesData();
+    loadMonthlyInsights();
   }, [dateFrom, dateTo, selectedRepositories, selectedComponents]);
 
   const loadRepositories = async () => {
@@ -202,6 +226,14 @@ export default function DashboardPage() {
       const response = await fetch("/api/analytics/repositories");
       const data = await response.json();
       setRepositories(data.repositories || []);
+
+      // Set date range from earliest PR to today
+      if (data.dateRange) {
+        setDateRange(data.dateRange);
+        if (data.dateRange.earliest && !dateFrom) {
+          setDateFrom(format(new Date(data.dateRange.earliest), "yyyy-MM-dd"));
+        }
+      }
     } catch (error) {
       console.error("Error loading repositories:", error);
     }
@@ -268,6 +300,194 @@ export default function DashboardPage() {
     }
   };
 
+  const loadMonthlyInsights = async () => {
+    try {
+      setInsightsLoading(true);
+      const params = new URLSearchParams();
+      if (dateFrom) params.append("dateFrom", dateFrom);
+      if (dateTo) params.append("dateTo", dateTo);
+
+      const response = await fetch(
+        `/api/analytics/monthly-insights?${params.toString()}`
+      );
+      const data = await response.json();
+      setMonthlyInsights(data.insights || []);
+    } catch (error) {
+      console.error("Error loading monthly insights:", error);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  const handleGenerateInsight = async (month: string) => {
+    try {
+      setGeneratingMonths((prev) => new Set([...prev, month]));
+
+      const response = await fetch("/api/analytics/monthly-insights/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, force: true }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start insight generation");
+      }
+
+      const data = await response.json();
+
+      // Poll for job completion
+      await pollJobCompletion(data.jobId, month);
+    } catch (error) {
+      console.error("Error generating insight:", error);
+    } finally {
+      setGeneratingMonths((prev) => {
+        const next = new Set(prev);
+        next.delete(month);
+        return next;
+      });
+    }
+  };
+
+  const handleRegenerateAll = async () => {
+    if (timeSeriesChartData.length === 0) return;
+
+    try {
+      setRegeneratingAll(true);
+      const months = timeSeriesChartData.map((d) => d.date);
+      setGeneratingMonths(new Set(months));
+
+      const response = await fetch("/api/analytics/monthly-insights/regenerate-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ months }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start regeneration");
+      }
+
+      const data = await response.json();
+
+      // Poll for bulk job completion
+      await pollBulkJobCompletion(data.jobIds, months);
+    } catch (error) {
+      console.error("Error regenerating all insights:", error);
+    } finally {
+      setRegeneratingAll(false);
+      setGeneratingMonths(new Set());
+    }
+  };
+
+  const pollBulkJobCompletion = async (jobIds: string[], months: string[]) => {
+    const maxAttempts = 120; // 4 minutes max for bulk
+    let attempts = 0;
+    const completedJobs = new Set<string>();
+
+    while (attempts < maxAttempts && completedJobs.size < jobIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      for (let i = 0; i < jobIds.length; i++) {
+        if (completedJobs.has(jobIds[i])) continue;
+
+        try {
+          const response = await fetch(`/api/jobs/${jobIds[i]}`);
+          const job = await response.json();
+
+          if (job.status === "COMPLETED" || job.status === "FAILED") {
+            completedJobs.add(jobIds[i]);
+            // Remove from generating set
+            setGeneratingMonths((prev) => {
+              const next = new Set(prev);
+              next.delete(months[i]);
+              return next;
+            });
+          }
+        } catch (error) {
+          console.error(`Error polling job ${jobIds[i]}:`, error);
+        }
+      }
+
+      attempts++;
+    }
+
+    // Reload insights when done
+    await loadMonthlyInsights();
+  };
+
+  const pollJobCompletion = async (jobId: string, month: string) => {
+    const maxAttempts = 60; // 2 minutes max
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Poll every 2 seconds
+
+      try {
+        const response = await fetch(`/api/jobs/${jobId}`);
+        const job = await response.json();
+
+        if (job.status === "COMPLETED") {
+          // Reload insights to get the new one
+          await loadMonthlyInsights();
+          return;
+        }
+
+        if (job.status === "FAILED") {
+          console.error("Insight generation failed:", job.error);
+          return;
+        }
+      } catch (error) {
+        console.error("Error polling job:", error);
+      }
+
+      attempts++;
+    }
+  };
+
+  const scrollToInsight = useCallback((month: string) => {
+    const ref = insightRefs.current[month];
+    if (ref) {
+      ref.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, []);
+
+  const handleSyncToGoogleDocs = async () => {
+    try {
+      setSyncingToGoogleDocs(true);
+
+      const response = await fetch("/api/analytics/monthly-insights/sync-google-docs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dateFrom: dateFrom ? dateFrom.substring(0, 7) : undefined,
+          dateTo: dateTo ? dateTo.substring(0, 7) : undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to sync to Google Docs");
+      }
+
+      setGoogleDocsUrl(data.documentUrl);
+      notifications.show({
+        title: data.created ? "Document Created" : "Document Updated",
+        message: `${data.insightsCount} monthly insights synced to Google Docs`,
+        color: "green",
+        autoClose: 5000,
+      });
+    } catch (error: any) {
+      console.error("Error syncing to Google Docs:", error);
+      notifications.show({
+        title: "Sync Failed",
+        message: error.message || "Failed to sync to Google Docs",
+        color: "red",
+      });
+    } finally {
+      setSyncingToGoogleDocs(false);
+    }
+  };
+
   const exportData = async () => {
     if (!analyticsData) return;
 
@@ -301,7 +521,12 @@ export default function DashboardPage() {
   };
 
   const clearFilters = () => {
-    setDateFrom(format(subMonths(new Date(), 12), "yyyy-MM-dd"));
+    // Reset to earliest PR date (or 12 months if not available)
+    if (dateRange?.earliest) {
+      setDateFrom(format(new Date(dateRange.earliest), "yyyy-MM-dd"));
+    } else {
+      setDateFrom(format(subMonths(new Date(), 12), "yyyy-MM-dd"));
+    }
     setDateTo(format(new Date(), "yyyy-MM-dd"));
     setSelectedRepositories([]);
     setSelectedComponents([]);
@@ -374,13 +599,7 @@ export default function DashboardPage() {
   };
 
   if (loading) {
-    return (
-      <Container size="xl" py="xl">
-        <Group justify="center" mt="xl">
-          <Loader size="lg" />
-        </Group>
-      </Container>
-    );
+    return <DashboardPageSkeleton />;
   }
 
   if (error) {
@@ -771,11 +990,19 @@ export default function DashboardPage() {
                   Activity Trends Over Time
                 </Text>
                 <Text size="sm" c="dimmed" mb="md">
-                  Monthly PR and code change activity
+                  Monthly PR and code change activity. Click a month to see AI-generated insights.
                 </Text>
                 <div style={{ height: 400 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={timeSeriesChartData}>
+                    <LineChart
+                      data={timeSeriesChartData}
+                      onClick={(data) => {
+                        if (data?.activeLabel) {
+                          scrollToInsight(data.activeLabel);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" />
                       <YAxis yAxisId="left" />
@@ -788,6 +1015,7 @@ export default function DashboardPage() {
                         dataKey="total_prs"
                         stroke="var(--mantine-color-blue-6)"
                         name="PRs"
+                        activeDot={{ r: 8 }}
                       />
                       <Line
                         yAxisId="right"
@@ -799,6 +1027,88 @@ export default function DashboardPage() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+              </Paper>
+
+              {/* Monthly Insights Timeline */}
+              <Paper withBorder p="md" mt="lg">
+                <Group justify="space-between" mb="md">
+                  <div>
+                    <Text fw={500}>Monthly Insights</Text>
+                    <Text size="sm" c="dimmed">
+                      AI-generated analysis of your monthly activity
+                    </Text>
+                  </div>
+                  <Group gap="sm">
+                    {insightsLoading && <Loader size="sm" />}
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<IconRefresh size={14} />}
+                      onClick={handleRegenerateAll}
+                      loading={regeneratingAll}
+                      disabled={timeSeriesChartData.length === 0 || regeneratingAll}
+                    >
+                      Regenerate All
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="blue"
+                      leftSection={<IconBrandGoogleDrive size={14} />}
+                      onClick={handleSyncToGoogleDocs}
+                      loading={syncingToGoogleDocs}
+                      disabled={monthlyInsights.length === 0 || syncingToGoogleDocs}
+                    >
+                      Sync to Google Docs
+                    </Button>
+                    {googleDocsUrl && (
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        color="green"
+                        component="a"
+                        href={googleDocsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        rightSection={<IconExternalLink size={14} />}
+                      >
+                        Open Doc
+                      </Button>
+                    )}
+                  </Group>
+                </Group>
+
+                <Stack gap="xl">
+                  {timeSeriesChartData.length > 0 ? (
+                    // Show cards for each month in the timeseries data
+                    [...timeSeriesChartData]
+                      .reverse() // Most recent first
+                      .map((dataPoint, index, arr) => {
+                        const insight = monthlyInsights.find(
+                          (i) => i.month === dataPoint.date
+                        );
+                        const isLast = index === arr.length - 1;
+                        return (
+                          <Fragment key={dataPoint.date}>
+                            <MonthlyInsightCard
+                              ref={(el) => {
+                                insightRefs.current[dataPoint.date] = el;
+                              }}
+                              insight={insight || null}
+                              month={dataPoint.date}
+                              isGenerating={generatingMonths.has(dataPoint.date)}
+                              onRegenerate={() => handleGenerateInsight(dataPoint.date)}
+                            />
+                            {!isLast && <Divider />}
+                          </Fragment>
+                        );
+                      })
+                  ) : (
+                    <Text c="dimmed" ta="center" py="xl">
+                      No activity data available for the selected date range.
+                    </Text>
+                  )}
+                </Stack>
               </Paper>
             </Tabs.Panel>
 

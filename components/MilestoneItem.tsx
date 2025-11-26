@@ -163,7 +163,7 @@ export function MilestoneItem({ milestone, goalId, onUpdate }: MilestoneItemProp
 
           <Menu position="bottom-end">
             <Menu.Target>
-              <ActionIcon variant="subtle" size="sm">
+              <ActionIcon variant="subtle" size="sm" aria-label="Milestone options menu">
                 <IconDots size={16} />
               </ActionIcon>
             </Menu.Target>

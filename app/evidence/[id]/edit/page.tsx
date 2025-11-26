@@ -520,6 +520,7 @@ export default function EvidenceEditPage() {
                               color="red"
                               variant="subtle"
                               onClick={() => handleRemoveCriterion(sc.criterionId)}
+                              aria-label="Remove criterion"
                             >
                               <IconX size={18} />
                             </ActionIcon>
@@ -598,6 +599,7 @@ export default function EvidenceEditPage() {
                             onClick={() =>
                               handleRemoveExistingAttachment(attachment.id)
                             }
+                            aria-label="Remove attachment"
                           >
                             <IconX size={18} />
                           </ActionIcon>

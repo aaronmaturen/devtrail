@@ -379,6 +379,19 @@ export async function getTimeSeriesData(filterOptions?: FilterOptions) {
     });
   });
 
+  // Always include the current month if within date range
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  // Check if current month should be included based on filters
+  const shouldIncludeCurrentMonth =
+    (!filterOptions?.dateTo || currentMonth <= filterOptions.dateTo.substring(0, 7)) &&
+    (!filterOptions?.dateFrom || currentMonth >= filterOptions.dateFrom.substring(0, 7));
+
+  if (shouldIncludeCurrentMonth && !monthlyData[currentMonth]) {
+    monthlyData[currentMonth] = {};
+  }
+
   return Object.entries(monthlyData)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, components]) => ({ date, components }));
@@ -397,19 +410,24 @@ export async function getRepositories() {
   });
 
   // Group by repository
-  const repoData: Record<string, { count: number; latestActivity: Date | null }> = {};
+  const repoData: Record<string, { count: number; latestActivity: Date | null; earliestActivity: Date | null }> = {};
 
   prs.forEach(pr => {
     if (!pr.repo) return;
 
     if (!repoData[pr.repo]) {
-      repoData[pr.repo] = { count: 0, latestActivity: null };
+      repoData[pr.repo] = { count: 0, latestActivity: null, earliestActivity: null };
     }
 
     repoData[pr.repo].count++;
 
-    if (pr.mergedAt && (!repoData[pr.repo].latestActivity || pr.mergedAt > repoData[pr.repo].latestActivity!)) {
-      repoData[pr.repo].latestActivity = pr.mergedAt;
+    if (pr.mergedAt) {
+      if (!repoData[pr.repo].latestActivity || pr.mergedAt > repoData[pr.repo].latestActivity!) {
+        repoData[pr.repo].latestActivity = pr.mergedAt;
+      }
+      if (!repoData[pr.repo].earliestActivity || pr.mergedAt < repoData[pr.repo].earliestActivity!) {
+        repoData[pr.repo].earliestActivity = pr.mergedAt;
+      }
     }
   });
 
@@ -418,7 +436,28 @@ export async function getRepositories() {
     total_prs: data.count,
     active_prs: data.count,
     latest_activity: data.latestActivity?.toISOString() || null,
+    earliest_activity: data.earliestActivity?.toISOString() || null,
   }));
+}
+
+export async function getDateRange(): Promise<{ earliest: string | null; latest: string | null }> {
+  // Get the earliest and latest PR dates across all repos
+  const earliest = await prisma.gitHubPR.findFirst({
+    where: { mergedAt: { not: null } },
+    orderBy: { mergedAt: 'asc' },
+    select: { mergedAt: true },
+  });
+
+  const latest = await prisma.gitHubPR.findFirst({
+    where: { mergedAt: { not: null } },
+    orderBy: { mergedAt: 'desc' },
+    select: { mergedAt: true },
+  });
+
+  return {
+    earliest: earliest?.mergedAt?.toISOString() || null,
+    latest: latest?.mergedAt?.toISOString() || null,
+  };
 }
 
 export async function getComponentsList() {

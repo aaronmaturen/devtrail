@@ -1,29 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { adfToText } from '@/lib/utils/adf-to-text';
+import { typeDisplayMap } from '@/lib/constants/evidence-types';
 
 interface RouteParams {
   params: Promise<{
     id: string;
   }>;
 }
-
-// Map new Evidence types to display types
-const typeDisplayMap: Record<string, string> = {
-  // GitHub types
-  PR_AUTHORED: 'PR',
-  PR_REVIEWED: 'PR',
-  ISSUE_CREATED: 'PR',
-  GITHUB_PR: 'PR',
-  GITHUB_ISSUE: 'PR',
-  // Jira types
-  JIRA_OWNED: 'JIRA',
-  JIRA_REVIEWED: 'JIRA',
-  JIRA: 'JIRA',
-  // Other types
-  SLACK: 'SLACK',
-  MANUAL: 'MANUAL',
-};
 
 /**
  * GET /api/evidence/[id]

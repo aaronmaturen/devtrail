@@ -7,12 +7,9 @@ import { resolve } from 'path';
 config({ path: resolve(process.cwd(), '.env.local') });
 
 import { PrismaClient } from '@prisma/client';
-import { processHybridGitHubSync, processHybridJiraSync } from './hybrid-sync';
+import { processJob, isJobTypeRegistered, isLegacyJobType, getJobTypeDescription } from './job-registry';
 
 const prisma = new PrismaClient();
-
-// Legacy job types - these are deprecated
-const LEGACY_JOB_ERROR = 'This job type is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.';
 
 const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
 let isShuttingDown = false;
@@ -85,53 +82,49 @@ async function processNextJob() {
   currentJobId = job.id;
 
   try {
-    // Parse job config
-    const config = job.config ? JSON.parse(job.config) : {};
+    // Parse job config for logging
+    const jobConfig = job.config ? JSON.parse(job.config) : {};
 
     // Log configuration details
-    if (job.type === 'GITHUB_SYNC' && config.repositories) {
-      console.log(`   📌 Repositories: ${config.repositories.join(', ')}`);
-    } else if (job.type === 'JIRA_SYNC' && config.jiraHost && config.projects) {
-      console.log(`   📌 Jira Host: ${config.jiraHost}`);
-      console.log(`   📌 Projects: ${config.projects.join(', ')}`);
+    if (job.type === 'AGENT_GITHUB_SYNC' && jobConfig.repositories) {
+      console.log(`   📌 Repositories: ${jobConfig.repositories.join(', ')}`);
+    } else if (job.type === 'AGENT_JIRA_SYNC' && jobConfig.jiraHost && jobConfig.projects) {
+      console.log(`   📌 Jira Host: ${jobConfig.jiraHost}`);
+      console.log(`   📌 Projects: ${jobConfig.projects.join(', ')}`);
     }
 
-    // Dispatch to appropriate handler based on job type
-    switch (job.type) {
-      case 'GITHUB_SYNC':
-      case 'JIRA_SYNC':
-        // Legacy job types - mark as failed
-        await prisma.job.update({
-          where: { id: job.id },
-          data: {
-            status: 'FAILED',
-            error: LEGACY_JOB_ERROR,
-            completedAt: new Date(),
-          },
-        });
-        throw new Error(LEGACY_JOB_ERROR);
-
-      case 'AGENT_GITHUB_SYNC':
-        console.log('   🔄 Running Hybrid GitHub sync (direct fetch + AI analysis)...');
-        await processHybridGitHubSync(job.id);
-        break;
-
-      case 'AGENT_JIRA_SYNC':
-        console.log('   🔄 Running Hybrid Jira sync (direct fetch + AI analysis)...');
-        await processHybridJiraSync(job.id);
-        break;
-
-      default:
-        console.warn(`⚠️  Unknown job type: ${job.type}`);
-        await prisma.job.update({
-          where: { id: job.id },
-          data: {
-            status: 'FAILED',
-            error: `Unknown job type: ${job.type}`,
-            completedAt: new Date(),
-          },
-        });
+    // Check for legacy job types
+    if (isLegacyJobType(job.type)) {
+      const error = `Job type '${job.type}' is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.`;
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: 'FAILED',
+          error,
+          completedAt: new Date(),
+        },
+      });
+      throw new Error(error);
     }
+
+    // Check if job type is registered
+    if (!isJobTypeRegistered(job.type)) {
+      const error = `Unknown job type: ${job.type}`;
+      console.warn(`⚠️  ${error}`);
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: 'FAILED',
+          error,
+          completedAt: new Date(),
+        },
+      });
+      throw new Error(error);
+    }
+
+    // Process the job using the registry
+    console.log(`   🔄 ${getJobTypeDescription(job.type)}...`);
+    await processJob(job.id, job.type);
 
     console.log(`✅ Job completed: ${job.id}`);
   } catch (error: any) {

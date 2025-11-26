@@ -1,14 +1,10 @@
 .header {
-  height: 56px;
-  background-color: var(--woodland-card);
-  border-bottom: 1px solid light-dark(
-    var(--woodland-border),
-    var(--mantine-color-dark-4)
-  );
+  height: 60px;
+  background-color: var(--mantine-color-bark-0);
 }
 
 .inner {
-  height: 56px;
+  height: 60px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -20,19 +16,13 @@
   padding: 8px 12px;
   border-radius: var(--mantine-radius-sm);
   text-decoration: none;
-  color: light-dark(
-    var(--mantine-color-gray-7),
-    var(--mantine-color-dark-0)
-  );
+  color: var(--mantine-color-gray-7);
   font-size: var(--mantine-font-size-sm);
   font-weight: 500;
 }
 
 .link:hover {
-  background-color: light-dark(
-    var(--mantine-color-gray-0),
-    var(--mantine-color-dark-6)
-  );
+  background-color: var(--mantine-color-gray-0);
 }
 
 .linkLabel {
@@ -40,9 +30,6 @@
 }
 
 .linkActive {
-  background-color: light-dark(
-    var(--mantine-color-brand-0),
-    var(--mantine-color-dark-6)
-  );
+  background-color: var(--mantine-color-brand-0);
   color: var(--mantine-color-brand-7);
 }

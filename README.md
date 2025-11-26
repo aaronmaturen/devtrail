@@ -30,13 +30,13 @@ DevTrail has been completely rebuilt as a modern web application:
 
 ```bash
 # Install dependencies
-npm install
+npm install --legacy-peer-deps
 
 # Set up database
 npm run db:generate
 npm run db:migrate
 
-# Start development server
+# Start development server (UI + worker)
 npm run dev
 ```
 
@@ -148,7 +148,8 @@ Generate from [Atlassian Account Settings](https://id.atlassian.com/manage-profi
 ### Development
 
 ```bash
-npm run dev              # Start Next.js dev server (port 4000)
+npm run dev              # Start UI + worker in parallel
+npm run ui:dev           # Start Next.js dev server only (port 4000)
 npm run build            # Build for production
 npm run start            # Start production server
 npm run lint             # Run ESLint
@@ -166,7 +167,8 @@ npm run db:studio        # Open Prisma Studio (database GUI)
 ### Workers
 
 ```bash
-npm run worker           # Start background worker for job processing
+npm run worker:dev       # Start worker with watch mode
+npm run worker:start     # Start worker (production)
 ```
 
 ### Data Migration
@@ -218,7 +220,7 @@ npm run goals          # Generate goals
 ```
 
 **New Way:**
-1. Start the app: `npm run dev`
+1. Start the app: `npm run dev` (starts both UI and background worker)
 2. Visit http://localhost:4000
 3. Use the web UI for all operations
 
@@ -312,17 +314,18 @@ npm run db:migrate
 
 ### Worker Development
 
-The worker runs in a separate process and polls for jobs every minute:
+The worker runs alongside the UI when using `npm run dev`. Both processes start in parallel:
 
 ```bash
-# Terminal 1: Next.js app
+# Start both UI and worker
 npm run dev
 
-# Terminal 2: Worker
-npm run worker
+# Or run them separately:
+npm run ui:dev      # Terminal 1: Next.js app
+npm run worker:dev  # Terminal 2: Worker with watch mode
 ```
 
-For faster development, trigger workers manually via API or reduce poll interval.
+The worker polls for jobs every minute. For faster development, trigger workers manually via API.
 
 ---
 

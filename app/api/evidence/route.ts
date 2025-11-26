@@ -1,31 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db/prisma';
-import { adfToText } from '@/lib/utils/adf-to-text';
-
-// Map new Evidence types to display types
-const typeDisplayMap: Record<string, string> = {
-  // GitHub types
-  PR_AUTHORED: 'PR',
-  PR_REVIEWED: 'PR',
-  ISSUE_CREATED: 'PR',
-  GITHUB_PR: 'PR',
-  GITHUB_ISSUE: 'PR',
-  // Jira types
-  JIRA_OWNED: 'JIRA',
-  JIRA_REVIEWED: 'JIRA',
-  JIRA: 'JIRA',
-  // Other types
-  SLACK: 'SLACK',
-  MANUAL: 'MANUAL',
-};
-
-// Map display types to internal types
-const displayToInternalTypes: Record<string, string[]> = {
-  PR: ['PR_AUTHORED', 'PR_REVIEWED', 'ISSUE_CREATED', 'GITHUB_PR', 'GITHUB_ISSUE'],
-  JIRA: ['JIRA_OWNED', 'JIRA_REVIEWED', 'JIRA'],
-  SLACK: ['SLACK'],
-  MANUAL: ['MANUAL'],
-};
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db/prisma";
+import { adfToText } from "@/lib/utils/adf-to-text";
+import {
+  typeDisplayMap,
+  displayToInternalTypes,
+  displayToInternalType,
+} from "@/lib/constants/evidence-types";
 
 /**
  * GET /api/evidence
@@ -34,11 +14,11 @@ const displayToInternalTypes: Record<string, string[]> = {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const type = searchParams.get('type');
-    const search = searchParams.get('search');
-    const criterionId = searchParams.get('criterionId');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const type = searchParams.get("type");
+    const search = searchParams.get("search");
+    const criterionId = searchParams.get("criterionId");
+    const limit = parseInt(searchParams.get("limit") || "50");
+    const offset = parseInt(searchParams.get("offset") || "0");
 
     // Build where clause
     const where: any = {};
@@ -49,12 +29,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
+      // SQLite LIKE is case-insensitive for ASCII by default
+      // Search across evidence fields and related entities
       where.OR = [
         { summary: { contains: search } },
         { manualTitle: { contains: search } },
         { manualContent: { contains: search } },
         { githubPr: { title: { contains: search } } },
+        { githubPr: { body: { contains: search } } },
         { jiraTicket: { summary: { contains: search } } },
+        { jiraTicket: { description: { contains: search } } },
+        { slackMessage: { content: { contains: search } } },
       ];
     }
 
@@ -63,7 +48,7 @@ export async function GET(request: NextRequest) {
         where: { criterionId: parseInt(criterionId) },
         select: { evidenceId: true },
       });
-      where.id = { in: matchingEvidence.map(e => e.evidenceId) };
+      where.id = { in: matchingEvidence.map((e) => e.evidenceId) };
     }
 
     // Fetch evidence with all related data
@@ -91,7 +76,7 @@ export async function GET(request: NextRequest) {
           },
           attachments: true,
         },
-        orderBy: { occurredAt: 'desc' },
+        orderBy: { occurredAt: "desc" },
         take: limit,
         skip: offset,
       }),
@@ -100,13 +85,13 @@ export async function GET(request: NextRequest) {
 
     // Get statistics by type
     const stats = await prisma.evidence.groupBy({
-      by: ['type'],
+      by: ["type"],
       _count: { type: true },
     });
 
     // Transform evidence to consistent display format
-    const transformedEvidence = evidence.map(e => {
-      const displayType = typeDisplayMap[e.type] || 'MANUAL';
+    const transformedEvidence = evidence.map((e) => {
+      const displayType = typeDisplayMap[e.type] || "MANUAL";
 
       // Build title and description based on source
       let title = e.summary;
@@ -148,7 +133,7 @@ export async function GET(request: NextRequest) {
 
         // Get linked Jira tickets
         if (e.githubPr.jiraLinks) {
-          linkedJiraTickets = e.githubPr.jiraLinks.map(link => ({
+          linkedJiraTickets = e.githubPr.jiraLinks.map((link) => ({
             key: link.jira.key,
             summary: link.jira.summary,
             issueType: link.jira.issueType,
@@ -161,7 +146,7 @@ export async function GET(request: NextRequest) {
 
         // Get linked PRs
         if (e.jiraTicket.prLinks) {
-          linkedPRs = e.jiraTicket.prLinks.map(link => ({
+          linkedPRs = e.jiraTicket.prLinks.map((link) => ({
             repo: link.pr.repo,
             number: link.pr.number,
             title: link.pr.title,
@@ -169,7 +154,9 @@ export async function GET(request: NextRequest) {
           }));
         }
       } else if (e.slackMessage) {
-        title = e.slackMessage.content.substring(0, 100) + (e.slackMessage.content.length > 100 ? '...' : '');
+        title =
+          e.slackMessage.content.substring(0, 100) +
+          (e.slackMessage.content.length > 100 ? "..." : "");
         description = e.slackMessage.content;
         slackLink = e.slackMessage.permalink;
       } else if (e.manualTitle) {
@@ -208,13 +195,21 @@ export async function GET(request: NextRequest) {
     // Build statistics object
     const statistics = {
       github: stats
-        .filter(s => ['PR_AUTHORED', 'PR_REVIEWED', 'ISSUE_CREATED', 'GITHUB_PR', 'GITHUB_ISSUE'].includes(s.type))
+        .filter((s) =>
+          [
+            "PR_AUTHORED",
+            "PR_REVIEWED",
+            "ISSUE_CREATED",
+            "GITHUB_PR",
+            "GITHUB_ISSUE",
+          ].includes(s.type),
+        )
         .reduce((acc, s) => acc + s._count.type, 0),
-      slack: stats.find(s => s.type === 'SLACK')?._count.type || 0,
+      slack: stats.find((s) => s.type === "SLACK")?._count.type || 0,
       reviews: 0, // Reviews are now part of manual or separate
-      manual: stats.find(s => s.type === 'MANUAL')?._count.type || 0,
+      manual: stats.find((s) => s.type === "MANUAL")?._count.type || 0,
       jira: stats
-        .filter(s => ['JIRA_OWNED', 'JIRA_REVIEWED', 'JIRA'].includes(s.type))
+        .filter((s) => ["JIRA_OWNED", "JIRA_REVIEWED", "JIRA"].includes(s.type))
         .reduce((acc, s) => acc + s._count.type, 0),
     };
 
@@ -227,10 +222,10 @@ export async function GET(request: NextRequest) {
       statistics,
     });
   } catch (error) {
-    console.error('Error fetching evidence:', error);
+    console.error("Error fetching evidence:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch evidence' },
-      { status: 500 }
+      { error: "Failed to fetch evidence" },
+      { status: 500 },
     );
   }
 }
@@ -262,35 +257,29 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     if (!type || !title) {
       return NextResponse.json(
-        { error: 'Type and title are required' },
-        { status: 400 }
+        { error: "Type and title are required" },
+        { status: 400 },
       );
     }
 
     // Map display type to internal type
-    const internalTypeMap: Record<string, string> = {
-      PR: 'PR_AUTHORED',
-      SLACK: 'SLACK',
-      REVIEW: 'MANUAL',
-      MANUAL: 'MANUAL',
-      JIRA: 'JIRA_OWNED',
-    };
-
-    const internalType = internalTypeMap[type] || 'MANUAL';
+    const internalType =
+      displayToInternalType[type as keyof typeof displayToInternalType] ||
+      "MANUAL";
 
     // Create evidence with appropriate source data
     let evidenceData: any = {
       type: internalType,
       summary: description || title,
-      category: 'feature',
-      scope: 'medium',
+      category: "feature",
+      scope: "medium",
       occurredAt: new Date(),
     };
 
     // For PR type, try to find or create GitHubPR
-    if (type === 'PR' && repository && prNumber) {
+    if (type === "PR" && repository && prNumber) {
       let githubPr = await prisma.gitHubPR.findFirst({
-        where: { repo: repository, number: prNumber, userRole: 'AUTHOR' },
+        where: { repo: repository, number: prNumber, userRole: "AUTHOR" },
       });
 
       if (!githubPr) {
@@ -306,20 +295,20 @@ export async function POST(request: NextRequest) {
             changedFiles: changedFiles || 0,
             createdAt: new Date(),
             mergedAt: mergedAt ? new Date(mergedAt) : null,
-            components: components ? JSON.stringify(components) : '[]',
-            files: '[]',
-            userRole: 'AUTHOR',
+            components: components ? JSON.stringify(components) : "[]",
+            files: "[]",
+            userRole: "AUTHOR",
           },
         });
       }
 
       evidenceData.githubPrId = githubPr.id;
-    } else if (type === 'SLACK' && slackLink) {
+    } else if (type === "SLACK" && slackLink) {
       // For Slack type, create SlackMessage
       const slackMessage = await prisma.slackMessage.create({
         data: {
-          channel: 'unknown',
-          author: 'unknown',
+          channel: "unknown",
+          author: "unknown",
           content: description || title,
           timestamp: new Date(),
           permalink: slackLink,
@@ -340,16 +329,21 @@ export async function POST(request: NextRequest) {
     // Create criteria relationships if provided
     if (criteriaIds && Array.isArray(criteriaIds)) {
       await Promise.all(
-        criteriaIds.map((item: { criterionId: number; confidence: number; explanation?: string }) =>
-          prisma.evidenceCriterion.create({
-            data: {
-              evidenceId: evidence.id,
-              criterionId: item.criterionId,
-              confidence: item.confidence,
-              explanation: item.explanation,
-            },
-          })
-        )
+        criteriaIds.map(
+          (item: {
+            criterionId: number;
+            confidence: number;
+            explanation?: string;
+          }) =>
+            prisma.evidenceCriterion.create({
+              data: {
+                evidenceId: evidence.id,
+                criterionId: item.criterionId,
+                confidence: item.confidence,
+                explanation: item.explanation,
+              },
+            }),
+        ),
       );
     }
 
@@ -369,10 +363,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(createdEvidence, { status: 201 });
   } catch (error) {
-    console.error('Error creating evidence:', error);
+    console.error("Error creating evidence:", error);
     return NextResponse.json(
-      { error: 'Failed to create evidence' },
-      { status: 500 }
+      { error: "Failed to create evidence" },
+      { status: 500 },
     );
   }
 }

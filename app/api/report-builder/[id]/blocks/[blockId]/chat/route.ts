@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import Anthropic from '@anthropic-ai/sdk';
-import { getConfiguredModelId } from '@/lib/ai/config';
+import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 
 /**
  * POST /api/report-builder/[id]/blocks/[blockId]/chat
@@ -40,35 +40,55 @@ export async function POST(
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    // Get API key
-    const apiKeyConfig = await prisma.config.findUnique({
-      where: { key: 'anthropic_api_key' },
-    });
-
-    if (!apiKeyConfig?.value) {
-      return NextResponse.json(
-        { error: 'Anthropic API key not configured' },
-        { status: 400 }
-      );
-    }
+    // Get API key from centralized config
+    const apiKey = await getAnthropicApiKey();
 
     // Build conversation messages
-    const systemPrompt = `You are an expert writing assistant helping refine performance review content.
+    const systemPrompt = `You are an expert writing assistant helping refine performance review content through conversation.
 
 Current block content:
 ---
 ${block.content}
 ---
 
-Help the user refine this content based on their feedback. When they're satisfied with changes,
-output the final version wrapped in <final_content> tags so it can be extracted and saved.
+## How to Respond
 
-Guidelines:
+1. **Have a conversation first** - Ask clarifying questions if the request is vague or you need more context. Examples:
+   - "What specific metrics or outcomes would you like me to highlight?"
+   - "Should I focus more on technical impact or team collaboration?"
+   - "Would you prefer a more formal or conversational tone?"
+
+2. **Only revise when ready** - When you have enough information and are ready to make changes, include your revised version wrapped in <revised_content> tags. The user will see a diff and can accept or reject.
+
+3. **You can do both** - You can ask a follow-up question AND provide a revised version if you want to offer something while getting feedback.
+
+## When Providing Revisions
+
+When you include <revised_content> tags:
+- Output the COMPLETE revised content, not just changes
 - Maintain the original voice and tone unless asked to change it
 - Keep content specific and data-driven
-- Preserve any concrete examples and metrics
+- Preserve concrete examples and metrics
 - Write in first person from the engineer's perspective
-- Be concise but impactful`;
+- Be concise but impactful
+
+## Examples
+
+User: "make it better"
+You: "I'd be happy to help improve this! Could you tell me what aspects you'd like to focus on? For example:
+- More specific metrics or outcomes?
+- Stronger action verbs?
+- Better flow between sentences?
+- Highlighting different achievements?"
+
+User: "add more metrics"
+You: "I'll add more quantifiable results. Here's a revised version:
+
+<revised_content>
+[full revised content here]
+</revised_content>
+
+I've added specific numbers around [X, Y, Z]. Would you like me to adjust any of these figures or add different metrics?"`;
 
     // Build message history
     const messages: Anthropic.MessageParam[] = [
@@ -84,7 +104,7 @@ Guidelines:
 
     // Call Claude
     const anthropic = new Anthropic({
-      apiKey: JSON.parse(apiKeyConfig.value),
+      apiKey,
     });
 
     const response = await anthropic.messages.create({
@@ -97,51 +117,19 @@ Guidelines:
     const assistantResponse =
       response.content[0].type === 'text' ? response.content[0].text : '';
 
-    // Check if response contains final content to save
-    const finalContentMatch = assistantResponse.match(
-      /<final_content>([\s\S]*?)<\/final_content>/
+    // Extract revised content
+    const revisedMatch = assistantResponse.match(
+      /<revised_content>([\s\S]*?)<\/revised_content>/
     );
 
-    let updatedBlock = null;
-    if (finalContentMatch) {
-      const finalContent = finalContentMatch[1].trim();
+    const revisedContent = revisedMatch ? revisedMatch[1].trim() : null;
 
-      // Create revision
-      await prisma.reportBlockRevision.create({
-        data: {
-          blockId,
-          previousContent: block.content,
-          newContent: finalContent,
-          changeType: 'AGENT_REFINEMENT',
-          changedBy: 'AGENT',
-          agentModel: modelId,
-          agentPrompt: message,
-        },
-      });
-
-      // Update block
-      updatedBlock = await prisma.reportBlock.update({
-        where: { id: blockId },
-        data: {
-          content: finalContent,
-          metadata: JSON.stringify({
-            ...JSON.parse(block.metadata || '{}'),
-            lastRefinedAt: new Date().toISOString(),
-            lastRefinementPrompt: message,
-          }),
-        },
-      });
-    }
-
+    // Return the revised content for diff display (don't save yet - user will accept/reject)
     return NextResponse.json({
       response: assistantResponse,
-      blockUpdated: !!updatedBlock,
-      updatedBlock: updatedBlock
-        ? {
-            ...updatedBlock,
-            metadata: JSON.parse(updatedBlock.metadata || '{}'),
-          }
-        : null,
+      revisedContent,
+      originalContent: block.content,
+      hasRevision: !!revisedContent,
       usage: response.usage,
     });
   } catch (error) {

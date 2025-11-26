@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
+import { typeDisplayMap, displayToInternalTypes } from '@/lib/constants/evidence-types';
 
 // Import sync tools for re-export
 import {
@@ -101,15 +102,6 @@ export const getEvidenceTool = tool({
         where.id = { in: matchingEvidence.map(e => e.evidenceId) };
       }
 
-      // Map display types to internal types
-      const displayToInternalTypes: Record<string, string[]> = {
-        PR: ['PR_AUTHORED', 'PR_REVIEWED', 'ISSUE_CREATED'],
-        JIRA: ['JIRA_OWNED', 'JIRA_REVIEWED'],
-        SLACK: ['SLACK'],
-        MANUAL: ['MANUAL'],
-        REVIEW: ['MANUAL'],
-      };
-
       // Convert type filter to internal types
       if (where.type && displayToInternalTypes[where.type]) {
         where.type = { in: displayToInternalTypes[where.type] };
@@ -137,17 +129,6 @@ export const getEvidenceTool = tool({
           },
         },
       });
-
-      // Map internal types to display types
-      const typeDisplayMap: Record<string, string> = {
-        PR_AUTHORED: 'PR',
-        PR_REVIEWED: 'PR',
-        JIRA_OWNED: 'JIRA',
-        JIRA_REVIEWED: 'JIRA',
-        ISSUE_CREATED: 'PR',
-        SLACK: 'SLACK',
-        MANUAL: 'MANUAL',
-      };
 
       return {
         success: true,
@@ -537,17 +518,6 @@ export const getEvidenceStatsTool = tool({
         },
       });
       const criteria = await prisma.criterion.findMany();
-
-      // Map internal types to display types
-      const typeDisplayMap: Record<string, string> = {
-        PR_AUTHORED: 'PR',
-        PR_REVIEWED: 'PR',
-        JIRA_OWNED: 'JIRA',
-        JIRA_REVIEWED: 'JIRA',
-        ISSUE_CREATED: 'PR',
-        SLACK: 'SLACK',
-        MANUAL: 'MANUAL',
-      };
 
       // Count by display type
       const byType = evidenceWithCriteria.reduce((acc, e) => {

@@ -191,6 +191,7 @@ export default function ReportDetailPage() {
               variant="subtle"
               size="lg"
               onClick={() => router.push('/reports')}
+              aria-label="Back to reports"
             >
               <IconArrowLeft size={20} />
             </ActionIcon>
@@ -220,7 +221,7 @@ export default function ReportDetailPage() {
             </Button>
             <Menu position="bottom-end">
               <Menu.Target>
-                <ActionIcon variant="subtle" size="lg">
+                <ActionIcon variant="subtle" size="lg" aria-label="Report options menu">
                   <IconDots size={20} />
                 </ActionIcon>
               </Menu.Target>

@@ -648,6 +648,7 @@ export default function SyncPage() {
                             variant="light"
                             size="sm"
                             onClick={() => cancelJob(activeJob.id)}
+                            aria-label="Stop sync"
                           >
                             <IconPlayerStop size={16} />
                           </ActionIcon>
@@ -725,6 +726,7 @@ export default function SyncPage() {
                             variant="subtle"
                             size="sm"
                             onClick={() => copyLogsToClipboard(activeJob)}
+                            aria-label="Copy logs to clipboard"
                           >
                             <IconCopy size={16} />
                           </ActionIcon>
@@ -956,6 +958,7 @@ export default function SyncPage() {
                             variant="light"
                             size="sm"
                             onClick={() => cancelJob(activeJob.id)}
+                            aria-label="Stop sync"
                           >
                             <IconPlayerStop size={16} />
                           </ActionIcon>
@@ -1033,6 +1036,7 @@ export default function SyncPage() {
                             variant="subtle"
                             size="sm"
                             onClick={() => copyLogsToClipboard(activeJob)}
+                            aria-label="Copy logs to clipboard"
                           >
                             <IconCopy size={16} />
                           </ActionIcon>

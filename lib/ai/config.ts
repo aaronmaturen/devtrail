@@ -32,6 +32,69 @@ export async function getAnthropicApiKey(): Promise<string> {
 }
 
 /**
+ * Get GitHub token from Config table or environment
+ * Priority: Database Config > Environment Variable
+ */
+export async function getGitHubToken(): Promise<string> {
+  // First try to get from database
+  try {
+    const config = await prisma.config.findUnique({
+      where: { key: 'github_token' }
+    });
+
+    if (config?.value) {
+      const parsed = JSON.parse(config.value);
+      if (typeof parsed === 'string' && parsed) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.warn('Could not retrieve GitHub token from database:', error);
+  }
+
+  // Fallback to environment variable
+  const envKey = process.env.GITHUB_TOKEN;
+  if (!envKey) {
+    throw new Error('GitHub token not found in database or environment');
+  }
+
+  return envKey;
+}
+
+/**
+ * Get Jira credentials from Config table
+ * Returns an object with host, email, and apiToken
+ */
+export async function getJiraCredentials(): Promise<{
+  host: string;
+  email: string;
+  apiToken: string;
+}> {
+  try {
+    const [hostConfig, emailConfig, tokenConfig] = await Promise.all([
+      prisma.config.findUnique({ where: { key: 'jira_host' } }),
+      prisma.config.findUnique({ where: { key: 'jira_email' } }),
+      prisma.config.findUnique({ where: { key: 'jira_api_token' } }),
+    ]);
+
+    const host = hostConfig?.value ? JSON.parse(hostConfig.value) : null;
+    const email = emailConfig?.value ? JSON.parse(emailConfig.value) : null;
+    const apiToken = tokenConfig?.value ? JSON.parse(tokenConfig.value) : null;
+
+    if (!host || !email || !apiToken) {
+      throw new Error('Jira credentials not fully configured in database');
+    }
+
+    return { host, email, apiToken };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not fully configured')) {
+      throw error;
+    }
+    throw new Error(`Failed to retrieve Jira credentials: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
  * Model configurations for different use cases
  */
 export const MODEL_CONFIGS = {

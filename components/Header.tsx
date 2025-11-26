@@ -141,7 +141,7 @@ export function Header() {
             {items}
           </Group>
 
-          <Burger opened={opened} onClick={toggle} size="sm" hiddenFrom="sm" />
+          <Burger opened={opened} onClick={toggle} size="sm" hiddenFrom="sm" aria-label="Toggle navigation menu" />
         </div>
       </Container>
     </header>

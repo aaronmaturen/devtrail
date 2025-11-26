@@ -452,6 +452,7 @@ export default function SlackEvidenceModal({
                                 color="red"
                                 variant="subtle"
                                 onClick={() => handleRemoveCriterion(sc.criterionId)}
+                                aria-label="Remove criterion"
                               >
                                 <IconX size={18} />
                               </ActionIcon>

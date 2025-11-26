@@ -31,7 +31,7 @@ export function MarkdownEditor({
   onBlur,
   onFocus,
   autoFocus = false,
-  previewBg = 'gray.0',
+  previewBg = 'gray',
 }: MarkdownEditorProps) {
   const [isEditing, setIsEditing] = useState(autoFocus);
   const { colorScheme } = useMantineColorScheme();
@@ -64,7 +64,7 @@ export function MarkdownEditor({
         )}
         <Paper
           p="sm"
-          bg={previewBg}
+          bg={`${previewBg}.0`}
           radius="sm"
           onClick={handleFocus}
           style={{ cursor: 'pointer', minHeight: minHeight / 2 }}
@@ -125,7 +125,7 @@ export function InlineMarkdownEditor({
   onChange,
   placeholder = 'Click to edit...',
   onSave,
-  previewBg = 'violet.0',
+  previewBg = 'violet',
   label,
 }: InlineMarkdownEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -148,7 +148,7 @@ export function InlineMarkdownEditor({
         )}
         <Paper
           p="sm"
-          bg={previewBg}
+          bg={`${previewBg}.0`}
           radius="sm"
           onClick={handleFocus}
           style={{ cursor: 'pointer' }}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import Anthropic from '@anthropic-ai/sdk';
-import { getConfiguredModelId } from '@/lib/ai/config';
+import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 
 /**
  * POST /api/report-builder/[id]/finalize
@@ -69,21 +69,11 @@ export async function POST(
       );
     }
 
-    // Get API key
-    const apiKeyConfig = await prisma.config.findUnique({
-      where: { key: 'anthropic_api_key' },
-    });
-
-    if (!apiKeyConfig?.value) {
-      return NextResponse.json(
-        { error: 'Anthropic API key not configured' },
-        { status: 400 }
-      );
-    }
-
+    // Get API key and model from centralized config
+    const apiKey = await getAnthropicApiKey();
     const modelId = await getConfiguredModelId();
     const anthropic = new Anthropic({
-      apiKey: JSON.parse(apiKeyConfig.value),
+      apiKey,
     });
 
     // Use AI to extract themes, strengths, growth areas, achievements

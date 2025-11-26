@@ -566,6 +566,7 @@ export default function InteractiveReviewPage() {
                       color="violet"
                       disabled={!input.trim() || isLoadingChat}
                       loading={isLoadingChat}
+                      aria-label="Send message"
                     >
                       <IconSend size={18} />
                     </ActionIcon>

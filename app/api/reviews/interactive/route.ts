@@ -1,21 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { adfToText } from '@/lib/utils/adf-to-text';
+import { typeDisplayMap } from '@/lib/constants/evidence-types';
 import fs from 'fs';
 import path from 'path';
 
 export const runtime = 'nodejs';
-
-// Map internal types to display types
-const typeDisplayMap: Record<string, string> = {
-  PR_AUTHORED: 'PR',
-  PR_REVIEWED: 'PR',
-  JIRA_OWNED: 'JIRA',
-  JIRA_REVIEWED: 'JIRA',
-  ISSUE_CREATED: 'PR',
-  SLACK: 'SLACK',
-  MANUAL: 'MANUAL',
-};
 
 /**
  * GET /api/reviews/interactive

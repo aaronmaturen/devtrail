@@ -222,7 +222,7 @@ export default function ReportBuilderPage() {
                     </Badge>
                     <Menu position="bottom-end">
                       <Menu.Target>
-                        <ActionIcon variant="subtle" color="gray">
+                        <ActionIcon variant="subtle" color="gray" aria-label="Report options menu">
                           <IconDotsVertical size={18} />
                         </ActionIcon>
                       </Menu.Target>

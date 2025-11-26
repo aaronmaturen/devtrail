@@ -66,6 +66,8 @@ model GitHubPR {
   @@index([repo])
   @@index([mergedAt])
   @@index([userRole])
+  @@index([createdAt])
+  @@index([reviewState])
   @@map("github_prs")
 }
 
@@ -89,6 +91,7 @@ model GitHubIssue {
   @@unique([repo, number])
   @@index([repo])
   @@index([createdAt])
+  @@index([state])
   @@map("github_issues")
 }
 
@@ -138,6 +141,9 @@ model JiraTicket {
   @@index([userRole])
   @@index([resolvedAt])
   @@index([issueType])
+  @@index([status])
+  @@index([createdAt])
+  @@index([epicKey])
   @@map("jira_tickets")
 }
 
@@ -175,6 +181,8 @@ model PRJiraLink {
   jira JiraTicket @relation(fields: [jiraKey], references: [key], onDelete: Cascade)
 
   @@unique([prId, jiraKey])
+  @@index([prId])
+  @@index([jiraKey])
   @@map("pr_jira_links")
 }
 
@@ -221,6 +229,10 @@ model Evidence {
   @@index([type])
   @@index([category])
   @@index([occurredAt])
+  @@index([createdAt])
+  @@index([scope])
+  @@index([githubPrId])
+  @@index([jiraTicketId])
   @@map("evidence")
 }
 
@@ -234,6 +246,8 @@ model EvidenceCriterion {
   criterion Criterion @relation(fields: [criterionId], references: [id])
 
   @@id([evidenceId, criterionId])
+  @@index([criterionId])
+  @@index([confidence])
   @@map("evidence_criteria")
 }
 
@@ -249,6 +263,7 @@ model Attachment {
 
   evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
 
+  @@index([evidenceId])
   @@map("attachments")
 }
 
@@ -275,6 +290,7 @@ model Report {
 
   @@index([type])
   @@index([createdAt])
+  @@index([jobId])
   @@map("reports")
 }
 
@@ -335,6 +351,8 @@ model ReviewDocument {
 
   @@unique([year, type])
   @@index([year])
+  @@index([type])
+  @@index([createdAt])
   @@map("review_documents")
 }
 
@@ -352,6 +370,8 @@ model ReviewSession {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
+  @@index([status])
+  @@index([createdAt])
   @@map("review_sessions")
 }
 
@@ -368,6 +388,8 @@ model ReviewResponse {
 
   session ReviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId])
+  @@index([questionKey])
   @@map("review_responses")
 }
 
@@ -410,6 +432,9 @@ model Goal {
 
   @@index([status])
   @@index([category])
+  @@index([createdAt])
+  @@index([targetDate])
+  @@index([priority])
   @@map("goals")
 }
 
@@ -428,6 +453,9 @@ model GoalMilestone {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([goalId])
+  @@index([status])
+  @@index([targetDate])
   @@map("goal_milestones")
 }
 
@@ -446,6 +474,8 @@ model GoalProgress {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@index([goalId])
+  @@index([createdAt])
   @@map("goal_progress")
 }
 
@@ -468,6 +498,8 @@ model GoalTemplate {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([category])
+  @@index([usageCount])
   @@map("goal_templates")
 }
 
@@ -589,4 +621,67 @@ model ReportBlockRevision {
   @@index([changeType])
   @@index([createdAt])
   @@map("report_block_revisions")
+}
+
+// ============================================================================
+// AI Analysis Background Jobs (NEW)
+// ============================================================================
+
+model AnalysisJob {
+  id         String  @id @default(cuid())
+  blockId    String? @map("block_id")
+  documentId String  @map("document_id")
+  type       String // GENERATE, REFINE, ANALYZE
+  prompt     String?
+  status     String  @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  result     String? // JSON result
+  error      String?
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([status])
+  @@index([documentId])
+  @@index([createdAt])
+  @@index([type])
+  @@index([blockId])
+  @@map("analysis_jobs")
+}
+
+// ============================================================================
+// Monthly Insights (AI-Generated Activity Analysis)
+// ============================================================================
+
+model MonthlyInsight {
+  id String @id @default(cuid())
+
+  // Month identifier
+  month    String @unique // Format: "YYYY-MM" (e.g., "2024-11")
+  year     Int
+  monthNum Int    @map("month_num")
+
+  // Raw metrics (snapshot at generation time)
+  totalPrs        Int    @map("total_prs")
+  totalChanges    Int    @map("total_changes")
+  componentsCount Int    @map("components_count")
+  categories      String @default("{}") // JSON: { "development": 5, "bug-fix": 3, ... }
+
+  // AI-generated content
+  strengths  String // JSON array of strength items
+  weaknesses String // JSON array of weakness items
+  tags       String // JSON array of tags like ["high-velocity", "feature-focused"]
+  summary    String // 2-3 sentence narrative summary
+
+  // Cache metadata
+  generatedAt DateTime @map("generated_at")
+  dataEndDate DateTime @map("data_end_date") // Latest PR date included in analysis
+  isComplete  Boolean  @default(false) @map("is_complete") // True if generated after month ended
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([year])
+  @@index([monthNum])
+  @@index([isComplete])
+  @@map("monthly_insights")
 }

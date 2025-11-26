@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/db/prisma';
 import { getAnthropicApiKey, MODEL_CONFIGS } from '@/lib/ai/config';
+import {
+  encodeCriteria,
+  mapCriteriaForPrompt,
+  TOON_FORMAT_EXPLANATION,
+} from '@/lib/utils/toon';
 
 /**
  * POST /api/evidence/analyze-screenshot
@@ -63,13 +68,14 @@ export async function POST(request: NextRequest) {
       orderBy: { id: 'asc' },
     });
 
-    // Format criteria for AI prompt
-    const criteriaList = criteria
-      .map((c) => `${c.id}: ${c.areaOfConcentration} > ${c.subarea} - ${c.description}`)
-      .join('\n');
+    // Format criteria in TOON format for token efficiency
+    const criteriaForPrompt = mapCriteriaForPrompt(criteria);
+    const toonCriteria = encodeCriteria(criteriaForPrompt);
 
     // Construct AI prompt
     const prompt = `You are analyzing a screenshot of a Slack message for a performance review evidence collection system.
+
+${TOON_FORMAT_EXPLANATION}
 
 Please analyze this Slack screenshot and extract the following information:
 
@@ -83,8 +89,10 @@ Please analyze this Slack screenshot and extract the following information:
 8. **Performance Criteria**: The top 1-3 most relevant performance criterion IDs from the list below, with confidence scores
 9. **Slack Link Hint**: If you can see any part of a URL or workspace name, extract it
 
-Available Performance Criteria:
-${criteriaList}
+Available Performance Criteria (TOON format):
+\`\`\`toon
+${toonCriteria}
+\`\`\`
 
 Please respond in JSON format:
 {

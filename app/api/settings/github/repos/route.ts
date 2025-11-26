@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Octokit } from '@octokit/rest';
-import { prisma } from '@/lib/db/prisma';
+import { getGitHubToken } from '@/lib/ai/config';
 
 export const runtime = 'nodejs';
 
@@ -10,19 +10,16 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get the GitHub token from config
-    const config = await prisma.config.findUnique({
-      where: { key: 'github_token' }
-    });
-
-    if (!config?.value) {
+    // Get the GitHub token from centralized config
+    let token: string;
+    try {
+      token = await getGitHubToken();
+    } catch (error) {
       return NextResponse.json(
         { error: 'GitHub token not configured' },
         { status: 400 }
       );
     }
-
-    const token = JSON.parse(config.value);
 
     // Create Octokit client
     const octokit = new Octokit({ auth: token });

@@ -254,6 +254,7 @@ export default function AssistantPage() {
                   color="violet"
                   disabled={!input.trim() || isLoading}
                   loading={isLoading}
+                  aria-label="Send message"
                 >
                   <IconSend size={18} />
                 </ActionIcon>

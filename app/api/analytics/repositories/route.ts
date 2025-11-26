@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getRepositories } from '@/lib/services/component-analytics';
+import { getRepositories, getDateRange } from '@/lib/services/component-analytics';
 
 /**
  * GET /api/analytics/repositories
- * Get list of available repositories with PR counts
+ * Get list of available repositories with PR counts and date range
  */
 export async function GET() {
   try {
-    const repositories = await getRepositories();
+    const [repositories, dateRange] = await Promise.all([
+      getRepositories(),
+      getDateRange(),
+    ]);
 
-    return NextResponse.json({ repositories });
+    return NextResponse.json({
+      repositories,
+      dateRange,
+    });
   } catch (error) {
     console.error('Error getting repositories:', error);
     return NextResponse.json(

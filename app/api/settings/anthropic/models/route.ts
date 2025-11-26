@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Anthropic } from '@anthropic-ai/sdk';
-import { prisma } from '@/lib/db/prisma';
+import { getAnthropicApiKey } from '@/lib/ai/config';
 
 export const runtime = 'nodejs';
 
@@ -10,19 +10,16 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get the Anthropic API key from config
-    const config = await prisma.config.findUnique({
-      where: { key: 'anthropic_api_key' }
-    });
-
-    if (!config?.value) {
+    // Get the Anthropic API key from centralized config
+    let apiKey: string;
+    try {
+      apiKey = await getAnthropicApiKey();
+    } catch (error) {
       return NextResponse.json(
         { error: 'Anthropic API key not configured' },
         { status: 400 }
       );
     }
-
-    const apiKey = JSON.parse(config.value);
 
     // Create client
     const anthropic = new Anthropic({ apiKey });

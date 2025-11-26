@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { triggerJobProcessing } from '@/lib/workers/process-helper';
 import { z } from 'zod';
+import { getAnthropicConfig, getUserContext } from '@/lib/config';
 
 // Schema for goal generation request
 const generateRequestSchema = z.object({
@@ -27,30 +28,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = generateRequestSchema.parse(body);
 
-    // Load configuration from database
-    const configs = await prisma.config.findMany({
-      where: {
-        key: {
-          in: ['anthropic_api_key', 'claude_model', 'user_context'],
-        },
-      },
-    });
-
-    const configMap = new Map(
-      configs.map((c) => [c.key, JSON.parse(c.value)])
-    );
-
-    const anthropicApiKey = configMap.get('anthropic_api_key');
-    const claudeModel = configMap.get('claude_model');
-    const userContext = configMap.get('user_context');
-
-    // Validate required configuration
-    if (!anthropicApiKey) {
-      return NextResponse.json(
-        { error: 'Anthropic API key not configured. Please configure in Settings.' },
-        { status: 400 }
-      );
-    }
+    // Load configuration using centralized getters
+    const { apiKey: anthropicApiKey, modelId: claudeModel } = await getAnthropicConfig();
+    const userContext = await getUserContext();
 
     // Prepare config for the job
     const jobConfig = {

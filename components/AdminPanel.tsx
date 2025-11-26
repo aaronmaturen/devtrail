@@ -588,6 +588,7 @@ export default function AdminPanel() {
                           variant="subtle"
                           size="sm"
                           onClick={() => deleteJob(job.id)}
+                          aria-label="Delete job"
                         >
                           <IconTrash size={14} />
                         </ActionIcon>

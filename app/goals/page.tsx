@@ -14,8 +14,6 @@ import {
   Stack,
   SimpleGrid,
   Progress,
-  Loader,
-  Center,
   Paper,
   Accordion,
 } from '@mantine/core';
@@ -27,6 +25,7 @@ import {
   IconPlayerPause,
   IconX,
 } from '@tabler/icons-react';
+import { GoalsPageSkeleton } from '@/components/skeletons';
 
 type Goal = {
   id: string;
@@ -111,13 +110,7 @@ export default function GoalsPage() {
   };
 
   if (loading) {
-    return (
-      <Container size="xl" py="xl">
-        <Center style={{ height: '50vh' }}>
-          <Loader size="xl" />
-        </Center>
-      </Container>
-    );
+    return <GoalsPageSkeleton />;
   }
 
   return (

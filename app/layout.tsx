@@ -6,7 +6,7 @@ import {
 } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { ModalsProvider } from "@mantine/modals";
-import { Header } from "@/components/Header";
+import { AppShellLayout } from "@/components/AppShellLayout";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,10 +28,14 @@ export default function RootLayout({
   return (
     <html lang="en" {...mantineHtmlProps}>
       <head>
-        <ColorSchemeScript />
+        <ColorSchemeScript defaultColorScheme="light" />
       </head>
       <body>
+        <a href="#main-content" className="sr-only">
+          Skip to main content
+        </a>
         <MantineProvider
+          defaultColorScheme="light"
           theme={{
             fontFamily:
               "Bahnschrift, 'DIN Alternate', 'Franklin Gothic Medium', 'Nimbus Sans Narrow', sans-serif-condensed, sans-serif",
@@ -93,19 +97,13 @@ export default function RootLayout({
               md: "0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06)",
               lg: "0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05)",
             },
-            other: {
-              woodland: {
-                background: "#fafaf7",
-                cardBg: "#f8f4f0",
-                muted: "#8ba880",
-              },
-            },
           }}
         >
           <ModalsProvider>
             <Notifications />
-            <Header />
-            {children}
+            <AppShellLayout>
+              <div id="main-content">{children}</div>
+            </AppShellLayout>
           </ModalsProvider>
         </MantineProvider>
       </body>

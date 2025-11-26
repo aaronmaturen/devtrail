@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db/prisma';
 import { z } from 'zod';
 
 // Disable caching for this route to ensure fresh config data
 export const dynamic = 'force-dynamic';
-
-const prisma = new PrismaClient();
 
 // Schema for config validation
 // Value can be: string (API keys, model IDs), array of strings (repos, projects), or empty string

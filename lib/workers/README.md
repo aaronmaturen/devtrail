@@ -52,9 +52,31 @@ cleanupOldJobs(days): Remove old completed jobs
 
 ### 3. Job Handlers
 
-#### GitHub Sync Worker (`lib/workers/github-sync.ts`)
+#### Active Job Types
 
-Processes `GITHUB_SYNC` jobs to fetch PRs from GitHub and analyze them with Claude AI.
+The following job types are actively supported and processed:
+
+- **AGENT_GITHUB_SYNC**: AI-powered GitHub PR sync with agent-based processing
+- **AGENT_JIRA_SYNC**: AI-powered Jira ticket sync with agent-based processing
+- **GOOGLE_DRIVE_SYNC**: Sync performance review documents from Google Drive
+- **REVIEW_ANALYSIS**: Analyze review documents and extract insights
+- **AI_ANALYSIS**: Analyze evidence items using AI for insights and patterns
+
+#### Deprecated Job Types
+
+The following job types are **deprecated** and will fail if processed:
+
+- ~~GITHUB_SYNC~~ (replaced by AGENT_GITHUB_SYNC)
+- ~~JIRA_SYNC~~ (replaced by AGENT_JIRA_SYNC)
+- ~~REPORT_GENERATION~~ (no worker implementation)
+- ~~GOAL_GENERATION~~ (no worker implementation)
+- ~~GOAL_PROGRESS~~ (no worker implementation)
+
+**Note**: Some API endpoints may still create these deprecated job types, but they will immediately fail with an "Unknown job type" error when the job processor attempts to handle them.
+
+#### GitHub Sync Worker (`lib/workers/agent-sync.ts`)
+
+Processes `AGENT_GITHUB_SYNC` jobs to fetch PRs from GitHub and analyze them with Claude AI.
 
 **Job Configuration:**
 ```json

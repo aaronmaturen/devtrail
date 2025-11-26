@@ -672,6 +672,7 @@ export default function EvidenceDetailPage() {
             size="lg"
             variant="filled"
             color="dark"
+            aria-label="Close image preview"
           >
             <IconX size={18} />
           </ActionIcon>

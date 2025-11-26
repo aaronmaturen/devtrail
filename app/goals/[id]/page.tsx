@@ -306,7 +306,7 @@ export default function GoalDetailPage({ params }: { params: { id: string } }) {
 
             <Menu position="bottom-end">
               <Menu.Target>
-                <ActionIcon variant="light" size="lg">
+                <ActionIcon variant="light" size="lg" aria-label="Goal options menu">
                   <IconDots size={18} />
                 </ActionIcon>
               </Menu.Target>
