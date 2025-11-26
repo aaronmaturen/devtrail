@@ -23,6 +23,7 @@ import {
   IconChevronDown,
   IconDashboard,
   IconSparkles,
+  IconLayoutBoard,
 } from "@tabler/icons-react";
 import classes from "./Header.module.css";
 
@@ -43,6 +44,7 @@ const links = [
     links: [
       { link: "/reviews", label: "Documents", icon: IconClipboardText },
       { link: "/reviews/interactive", label: "Interactive Review", icon: IconSparkles },
+      { link: "/report-builder", label: "Report Builder", icon: IconLayoutBoard },
     ],
   },
   {

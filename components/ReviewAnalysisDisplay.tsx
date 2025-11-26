@@ -114,7 +114,7 @@ export default function ReviewAnalysisDisplay({
         </Stack>
 
         {/* Themes */}
-        {analysis.themes.length > 0 && (
+        {analysis.themes?.length > 0 && (
           <Stack gap="xs">
             <Text size="sm" fw={600} c="dimmed">Key Themes</Text>
             <Group gap="xs">
@@ -128,7 +128,7 @@ export default function ReviewAnalysisDisplay({
         )}
 
         {/* Strengths */}
-        {analysis.strengths.length > 0 && (
+        {analysis.strengths?.length > 0 && (
           <Stack gap="xs">
             <Text size="sm" fw={600} c="dimmed">Strengths</Text>
             <Stack gap="xs">
@@ -143,7 +143,7 @@ export default function ReviewAnalysisDisplay({
         )}
 
         {/* Achievements */}
-        {analysis.achievements.length > 0 && (
+        {analysis.achievements?.length > 0 && (
           <Stack gap="xs">
             <Text size="sm" fw={600} c="dimmed">Key Achievements</Text>
             <Stack gap="xs">
@@ -158,7 +158,7 @@ export default function ReviewAnalysisDisplay({
         )}
 
         {/* Growth Areas */}
-        {analysis.growthAreas.length > 0 && (
+        {analysis.growthAreas?.length > 0 && (
           <Stack gap="xs">
             <Text size="sm" fw={600} c="dimmed">Growth Areas</Text>
             <Stack gap="xs">

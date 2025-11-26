@@ -1,8 +1,6 @@
-import { anthropic } from '@ai-sdk/anthropic';
 import { devtrailTools } from '@/lib/ai/tools';
 
 export const reviewAssistantAgent = {
-  model: anthropic('claude-3-5-sonnet-20241022'),
   system: `You are a Performance Review Assistant AI for DevTrail, an expert in helping software engineers craft compelling annual performance reviews.
 
 ## Your Role

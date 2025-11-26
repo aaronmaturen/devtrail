@@ -1,11 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { adfToText } from '@/lib/utils/adf-to-text';
 
 interface RouteParams {
   params: Promise<{
     id: string;
   }>;
 }
+
+// Map new Evidence types to display types
+const typeDisplayMap: Record<string, string> = {
+  // GitHub types
+  PR_AUTHORED: 'PR',
+  PR_REVIEWED: 'PR',
+  ISSUE_CREATED: 'PR',
+  GITHUB_PR: 'PR',
+  GITHUB_ISSUE: 'PR',
+  // Jira types
+  JIRA_OWNED: 'JIRA',
+  JIRA_REVIEWED: 'JIRA',
+  JIRA: 'JIRA',
+  // Other types
+  SLACK: 'SLACK',
+  MANUAL: 'MANUAL',
+};
 
 /**
  * GET /api/evidence/[id]
@@ -17,13 +35,27 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const evidence = await prisma.evidenceEntry.findUnique({
+
+    const evidence = await prisma.evidence.findUnique({
       where: { id },
       include: {
-        criteria: {
+        githubPr: {
           include: {
-            criterion: true,
+            jiraLinks: {
+              include: { jira: true },
+            },
           },
+        },
+        jiraTicket: {
+          include: {
+            prLinks: {
+              include: { pr: true },
+            },
+          },
+        },
+        slackMessage: true,
+        criteria: {
+          include: { criterion: true },
         },
         attachments: true,
       },
@@ -36,7 +68,120 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(evidence);
+    const displayType = typeDisplayMap[evidence.type] || 'MANUAL';
+
+    // Build response with all details
+    let title = evidence.summary;
+    let description = evidence.summary;
+    let repository: string | null = null;
+    let prNumber: number | null = null;
+    let prUrl: string | null = null;
+    let slackLink: string | null = null;
+    let additions: number | null = null;
+    let deletions: number | null = null;
+    let changedFiles: number | null = null;
+    let components: string | null = null;
+    let mergedAt: Date | null = null;
+    let content = '{}';
+
+    // Linked items
+    let linkedJiraTickets: Array<{
+      key: string;
+      summary: string;
+      issueType: string;
+      status: string;
+    }> = [];
+    let linkedPRs: Array<{
+      repo: string;
+      number: number;
+      title: string;
+      url: string;
+    }> = [];
+
+    if (evidence.githubPr) {
+      title = evidence.githubPr.title;
+      description = evidence.githubPr.body || evidence.summary;
+      repository = evidence.githubPr.repo;
+      prNumber = evidence.githubPr.number;
+      prUrl = evidence.githubPr.url;
+      additions = evidence.githubPr.additions;
+      deletions = evidence.githubPr.deletions;
+      changedFiles = evidence.githubPr.changedFiles;
+      components = evidence.githubPr.components;
+      mergedAt = evidence.githubPr.mergedAt;
+
+      if (evidence.githubPr.jiraLinks) {
+        linkedJiraTickets = evidence.githubPr.jiraLinks.map(link => ({
+          key: link.jira.key,
+          summary: link.jira.summary,
+          issueType: link.jira.issueType,
+          status: link.jira.status,
+        }));
+      }
+    } else if (evidence.jiraTicket) {
+      title = `${evidence.jiraTicket.key}: ${evidence.jiraTicket.summary}`;
+      description = adfToText(evidence.jiraTicket.description) || evidence.summary;
+      content = JSON.stringify({
+        key: evidence.jiraTicket.key,
+        issueType: evidence.jiraTicket.issueType,
+        status: evidence.jiraTicket.status,
+        storyPoints: evidence.jiraTicket.storyPoints,
+        priority: evidence.jiraTicket.priority,
+        sprint: evidence.jiraTicket.sprint,
+        epicKey: evidence.jiraTicket.epicKey,
+        epicSummary: evidence.jiraTicket.epicSummary,
+      });
+
+      if (evidence.jiraTicket.prLinks) {
+        linkedPRs = evidence.jiraTicket.prLinks.map(link => ({
+          repo: link.pr.repo,
+          number: link.pr.number,
+          title: link.pr.title,
+          url: link.pr.url,
+        }));
+      }
+    } else if (evidence.slackMessage) {
+      title = evidence.slackMessage.content.substring(0, 100) + (evidence.slackMessage.content.length > 100 ? '...' : '');
+      description = evidence.slackMessage.content;
+      slackLink = evidence.slackMessage.permalink;
+      content = JSON.stringify({
+        channel: evidence.slackMessage.channel,
+        author: evidence.slackMessage.author,
+        reactions: evidence.slackMessage.reactions,
+      });
+    } else if (evidence.manualTitle) {
+      title = evidence.manualTitle;
+      description = evidence.manualContent || evidence.summary;
+      content = evidence.manualContent || '{}';
+    }
+
+    return NextResponse.json({
+      id: evidence.id,
+      type: displayType,
+      internalType: evidence.type,
+      title,
+      description,
+      content,
+      summary: evidence.summary,
+      category: evidence.category,
+      scope: evidence.scope,
+      timestamp: evidence.occurredAt,
+      repository,
+      prNumber,
+      prUrl,
+      slackLink,
+      additions,
+      deletions,
+      changedFiles,
+      components,
+      mergedAt,
+      criteria: evidence.criteria,
+      attachments: evidence.attachments,
+      linkedJiraTickets,
+      linkedPRs,
+      createdAt: evidence.createdAt,
+      updatedAt: evidence.updatedAt,
+    });
   } catch (error) {
     console.error('Error fetching evidence:', error);
     return NextResponse.json(
@@ -60,21 +205,14 @@ export async function PUT(
     const {
       title,
       description,
-      content,
-      prNumber,
-      prUrl,
-      repository,
-      mergedAt,
-      slackLink,
-      additions,
-      deletions,
-      changedFiles,
-      components,
+      summary,
+      category,
+      scope,
       criteriaIds,
     } = body;
 
     // Check if evidence exists
-    const existing = await prisma.evidenceEntry.findUnique({
+    const existing = await prisma.evidence.findUnique({
       where: { id },
     });
 
@@ -85,23 +223,21 @@ export async function PUT(
       );
     }
 
-    // Update evidence entry
-    const evidence = await prisma.evidenceEntry.update({
+    // Update evidence
+    const updateData: any = {};
+    if (summary !== undefined) updateData.summary = summary;
+    if (category !== undefined) updateData.category = category;
+    if (scope !== undefined) updateData.scope = scope;
+
+    // If manual evidence, update manual fields
+    if (existing.type === 'MANUAL') {
+      if (title !== undefined) updateData.manualTitle = title;
+      if (description !== undefined) updateData.manualContent = description;
+    }
+
+    const evidence = await prisma.evidence.update({
       where: { id },
-      data: {
-        title,
-        description,
-        content,
-        prNumber,
-        prUrl,
-        repository,
-        mergedAt: mergedAt ? new Date(mergedAt) : null,
-        slackLink,
-        additions,
-        deletions,
-        changedFiles,
-        components: components ? JSON.stringify(components) : null,
-      },
+      data: updateData,
     });
 
     // Update criteria relationships if provided
@@ -127,13 +263,14 @@ export async function PUT(
     }
 
     // Fetch updated evidence with relationships
-    const updatedEvidence = await prisma.evidenceEntry.findUnique({
+    const updatedEvidence = await prisma.evidence.findUnique({
       where: { id },
       include: {
+        githubPr: true,
+        jiraTicket: true,
+        slackMessage: true,
         criteria: {
-          include: {
-            criterion: true,
-          },
+          include: { criterion: true },
         },
         attachments: true,
       },
@@ -159,8 +296,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
     // Check if evidence exists
-    const existing = await prisma.evidenceEntry.findUnique({
+    const existing = await prisma.evidence.findUnique({
       where: { id },
     });
 
@@ -172,7 +310,7 @@ export async function DELETE(
     }
 
     // Delete evidence (cascade will delete criteria relationships and attachments)
-    await prisma.evidenceEntry.delete({
+    await prisma.evidence.delete({
       where: { id },
     });
 

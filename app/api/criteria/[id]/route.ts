@@ -25,9 +25,9 @@ export async function GET(
             evidence: {
               select: {
                 id: true,
-                title: true,
+                summary: true,
                 type: true,
-                timestamp: true,
+                occurredAt: true,
               },
             },
           },

@@ -1,5 +1,6 @@
 import { streamText } from 'ai';
 import { getAgent, type AgentType } from '@/lib/ai/agents';
+import { getConfiguredModel } from '@/lib/ai/config';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -33,9 +34,12 @@ export async function POST(req: Request) {
     // Get the appropriate agent configuration
     const agent = getAgent(agentType as AgentType);
 
+    // Get model from database configuration
+    const model = await getConfiguredModel();
+
     // Stream the response with tool support
     const result = streamText({
-      model: agent.model,
+      model,
       system: agent.system,
       messages,
       tools: agent.tools,

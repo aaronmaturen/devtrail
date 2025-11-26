@@ -1,6 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { prisma } from '../db/prisma';
-import { getAnthropicApiKey, MODEL_CONFIGS } from '@/lib/ai/config';
+import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 
 /**
  * Worker for analyzing performance review documents
@@ -82,6 +82,9 @@ export async function processReviewAnalysisJob(jobId: string): Promise<void> {
     // Initialize Anthropic client
     const anthropic = new Anthropic({ apiKey });
 
+    // Get model from database configuration
+    const modelId = await getConfiguredModelId();
+
     // Construct AI prompt
     await updateJobProgress(jobId, 20, 'Analyzing review content with AI');
 
@@ -89,7 +92,7 @@ export async function processReviewAnalysisJob(jobId: string): Promise<void> {
 
     // Call Anthropic API
     const completion = await anthropic.messages.create({
-      model: MODEL_CONFIGS.STANDARD.model,
+      model: modelId,
       max_tokens: 4096,
       temperature: 0.3,
       messages: [{ role: 'user', content: prompt }],
@@ -335,14 +338,15 @@ export async function processBatchReviewAnalysis(
           metadata: review.weight ? { weight: review.weight } : undefined,
         };
 
-        // Get API key
+        // Get API key and model
         const apiKey = await getAnthropicApiKey();
+        const modelId = await getConfiguredModelId();
         const anthropic = new Anthropic({ apiKey });
 
         // Analyze this review
         const prompt = buildAnalysisPrompt(reviewConfig);
         const completion = await anthropic.messages.create({
-          model: MODEL_CONFIGS.STANDARD.model,
+          model: modelId,
           max_tokens: 4096,
           temperature: 0.3,
           messages: [{ role: 'user', content: prompt }],

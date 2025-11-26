@@ -150,12 +150,8 @@ export default function ReviewsPage() {
             <Title order={2}>
               {analyses.length} {analyses.length === 1 ? 'Analysis' : 'Analyses'}
             </Title>
-            {analyses.map((analysis) => (
-              <ReviewAnalysisDisplay
-                key={analysis.id}
-                analysis={analysis}
-                onDelete={handleDelete}
-              />
+            {analyses.map((analysis, index) => (
+              <ReviewAnalysisDisplay key={analysis.id ?? `analysis-${index}`} analysis={analysis} onDelete={handleDelete} />
             ))}
           </Stack>
         )}

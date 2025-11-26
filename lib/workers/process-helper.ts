@@ -3,13 +3,12 @@
  * or queue jobs for cron processing in production
  */
 
-import { processGitHubSyncJob } from './github-sync';
-import { processJiraSyncJob } from './jira-sync';
-import { processReportGenerationJob } from './report-generation';
 import { processGoogleDriveSyncJob } from './google-drive-sync';
 import { processReviewAnalysisJob } from './review-analysis';
-import { processGoalProgressJob } from './goals-progress';
-import { processGoalGenerationJob } from './goals-generation';
+import { processAgentGitHubSync, processAgentJiraSync } from './agent-sync';
+
+// Legacy job types - these are deprecated
+const LEGACY_JOB_ERROR = 'This job type is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.';
 
 export interface ProcessTriggerOptions {
   /**
@@ -23,7 +22,7 @@ export interface ProcessTriggerOptions {
  * Trigger job processing either immediately (local dev) or queued (production)
  *
  * @param jobId - The job ID to process
- * @param jobType - The type of job (GITHUB_SYNC, REPORT_GENERATION, etc.)
+ * @param jobType - The type of job (AGENT_GITHUB_SYNC, AGENT_JIRA_SYNC, etc.)
  * @param options - Processing options
  */
 export async function triggerJobProcessing(
@@ -60,35 +59,30 @@ export async function triggerJobProcessing(
 async function routeJobToWorker(jobId: string, jobType: string): Promise<void> {
   switch (jobType) {
     case 'GITHUB_SYNC':
-      await processGitHubSyncJob(jobId);
-      break;
-
     case 'JIRA_SYNC':
-      await processJiraSyncJob(jobId);
-      break;
-
     case 'REPORT_GENERATION':
-      await processReportGenerationJob(jobId);
-      break;
+    case 'GOAL_PROGRESS':
+    case 'GOAL_GENERATION':
+      throw new Error(LEGACY_JOB_ERROR);
 
     case 'GOOGLE_DRIVE_SYNC':
       await processGoogleDriveSyncJob(jobId);
-      break;
-
-    case 'GOAL_PROGRESS':
-      await processGoalProgressJob(jobId);
       break;
 
     case 'REVIEW_ANALYSIS':
       await processReviewAnalysisJob(jobId);
       break;
 
-    case 'GOAL_GENERATION':
-      await processGoalGenerationJob(jobId);
-      break;
-
     case 'AI_ANALYSIS':
       throw new Error('AI analysis worker not yet implemented');
+
+    case 'AGENT_GITHUB_SYNC':
+      await processAgentGitHubSync(jobId);
+      break;
+
+    case 'AGENT_JIRA_SYNC':
+      await processAgentJiraSync(jobId);
+      break;
 
     default:
       throw new Error(`Unknown job type: ${jobType}`);

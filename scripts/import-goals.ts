@@ -48,7 +48,7 @@ function parseGoalSection(text: string): ParsedGoal | null {
   const title = titleMatch[1].trim();
 
   // Extract SMART goal description
-  const smartGoalMatch = text.match(/\*\*SMART Goal:\*\*\s+(.+?)(?=\n\n|\*\*)/s);
+  const smartGoalMatch = text.match(/\*\*SMART Goal:\*\*\s+([\s\S]+?)(?=\n\n|\*\*)/);
   const description = smartGoalMatch ? smartGoalMatch[1].trim() : '';
 
   // Extract Success Criteria
@@ -65,7 +65,7 @@ function parseGoalSection(text: string): ParsedGoal | null {
   const timeline = timelineMatch ? timelineMatch[1].trim() : '';
 
   // Extract Alignment
-  const alignmentMatch = text.match(/\*\*Alignment:\*\*\s+(.+?)(?=\n\n|\*\*|$)/s);
+  const alignmentMatch = text.match(/\*\*Alignment:\*\*\s+([\s\S]+?)(?=\n\n|\*\*|$)/);
   const alignment = alignmentMatch ? alignmentMatch[1].trim() : '';
 
   // Determine category from title keywords

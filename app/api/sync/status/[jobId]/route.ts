@@ -28,6 +28,7 @@ export async function GET(
       type: job.type,
       status: job.status,
       progress: job.progress,
+      statusMessage: job.statusMessage,
       logs: job.logs ? JSON.parse(job.logs) : [],
       result: job.result ? JSON.parse(job.result) : null,
       error: job.error,
@@ -88,6 +89,10 @@ export async function PATCH(
       updateData.error = body.error;
     }
 
+    if (body.statusMessage !== undefined) {
+      updateData.statusMessage = body.statusMessage;
+    }
+
     // Update the job
     const job = await prisma.job.update({
       where: { id: jobId },
@@ -98,6 +103,7 @@ export async function PATCH(
       id: job.id,
       status: job.status,
       progress: job.progress,
+      statusMessage: job.statusMessage,
       updatedAt: job.updatedAt,
     });
   } catch (error) {

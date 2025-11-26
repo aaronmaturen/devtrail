@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 
+// Disable caching for this route to ensure fresh config data
+export const dynamic = 'force-dynamic';
+
 const prisma = new PrismaClient();
 
 // Schema for config validation

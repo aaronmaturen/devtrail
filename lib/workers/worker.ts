@@ -7,10 +7,12 @@ import { resolve } from 'path';
 config({ path: resolve(process.cwd(), '.env.local') });
 
 import { PrismaClient } from '@prisma/client';
-import { handleGitHubSync } from './handlers/github-sync';
-import { handleJiraSync } from './handlers/jira-sync';
+import { processHybridGitHubSync, processHybridJiraSync } from './hybrid-sync';
 
 const prisma = new PrismaClient();
+
+// Legacy job types - these are deprecated
+const LEGACY_JOB_ERROR = 'This job type is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.';
 
 const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
 let isShuttingDown = false;
@@ -97,11 +99,26 @@ async function processNextJob() {
     // Dispatch to appropriate handler based on job type
     switch (job.type) {
       case 'GITHUB_SYNC':
-        await handleGitHubSync(job.id, config);
+      case 'JIRA_SYNC':
+        // Legacy job types - mark as failed
+        await prisma.job.update({
+          where: { id: job.id },
+          data: {
+            status: 'FAILED',
+            error: LEGACY_JOB_ERROR,
+            completedAt: new Date(),
+          },
+        });
+        throw new Error(LEGACY_JOB_ERROR);
+
+      case 'AGENT_GITHUB_SYNC':
+        console.log('   🔄 Running Hybrid GitHub sync (direct fetch + AI analysis)...');
+        await processHybridGitHubSync(job.id);
         break;
 
-      case 'JIRA_SYNC':
-        await handleJiraSync(job.id, config);
+      case 'AGENT_JIRA_SYNC':
+        console.log('   🔄 Running Hybrid Jira sync (direct fetch + AI analysis)...');
+        await processHybridJiraSync(job.id);
         break;
 
       default:

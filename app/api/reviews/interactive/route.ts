@@ -1,9 +1,21 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { adfToText } from '@/lib/utils/adf-to-text';
 import fs from 'fs';
 import path from 'path';
 
 export const runtime = 'nodejs';
+
+// Map internal types to display types
+const typeDisplayMap: Record<string, string> = {
+  PR_AUTHORED: 'PR',
+  PR_REVIEWED: 'PR',
+  JIRA_OWNED: 'JIRA',
+  JIRA_REVIEWED: 'JIRA',
+  ISSUE_CREATED: 'PR',
+  SLACK: 'SLACK',
+  MANUAL: 'MANUAL',
+};
 
 /**
  * GET /api/reviews/interactive
@@ -51,13 +63,16 @@ export async function GET() {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
-    const evidence = await prisma.evidenceEntry.findMany({
+    const evidenceEntries = await prisma.evidence.findMany({
       where: {
-        timestamp: {
+        occurredAt: {
           gte: twelveMonthsAgo,
         },
       },
       include: {
+        githubPr: true,
+        jiraTicket: true,
+        slackMessage: true,
         criteria: {
           include: {
             criterion: true,
@@ -66,8 +81,67 @@ export async function GET() {
         attachments: true,
       },
       orderBy: {
-        timestamp: 'desc',
+        occurredAt: 'desc',
       },
+    });
+
+    // Transform evidence to consistent format
+    const evidence = evidenceEntries.map(e => {
+      const displayType = typeDisplayMap[e.type] || 'MANUAL';
+
+      // Build title and other fields based on source
+      let title = e.summary;
+      let description = e.summary;
+      let prNumber: number | null = null;
+      let prUrl: string | null = null;
+      let repository: string | null = null;
+      let slackLink: string | null = null;
+      let additions: number | null = null;
+      let deletions: number | null = null;
+      let changedFiles: number | null = null;
+      let components: string[] | null = null;
+
+      if (e.githubPr) {
+        title = e.githubPr.title;
+        description = e.githubPr.body || e.summary;
+        prNumber = e.githubPr.number;
+        prUrl = e.githubPr.url;
+        repository = e.githubPr.repo;
+        additions = e.githubPr.additions;
+        deletions = e.githubPr.deletions;
+        changedFiles = e.githubPr.changedFiles;
+        components = e.githubPr.components ? JSON.parse(e.githubPr.components) : null;
+      } else if (e.jiraTicket) {
+        title = `${e.jiraTicket.key}: ${e.jiraTicket.summary}`;
+        description = adfToText(e.jiraTicket.description) || e.summary;
+      } else if (e.slackMessage) {
+        title = e.slackMessage.content.substring(0, 100);
+        description = e.slackMessage.content;
+        slackLink = e.slackMessage.permalink;
+      } else if (e.manualTitle) {
+        title = e.manualTitle;
+        description = e.manualContent || e.summary;
+      }
+
+      return {
+        id: e.id,
+        type: displayType,
+        internalType: e.type,
+        title,
+        description,
+        timestamp: e.occurredAt,
+        prNumber,
+        prUrl,
+        repository,
+        slackLink,
+        confidence: 1.0,
+        additions,
+        deletions,
+        changedFiles,
+        components,
+        criteria: e.criteria,
+        attachments: e.attachments,
+      };
     });
 
     // Get active goals
@@ -125,7 +199,7 @@ export async function GET() {
     // Group evidence by criterion for quick lookup
     const evidenceByCriterion: Record<number, any[]> = {};
     evidence.forEach(e => {
-      e.criteria.forEach(ec => {
+      e.criteria.forEach((ec: any) => {
         if (!evidenceByCriterion[ec.criterionId]) {
           evidenceByCriterion[ec.criterionId] = [];
         }
@@ -177,9 +251,9 @@ export async function GET() {
             additions: e.additions,
             deletions: e.deletions,
             changedFiles: e.changedFiles,
-            components: e.components ? JSON.parse(e.components) : null,
+            components: e.components,
           },
-          criteria: e.criteria.map(ec => ({
+          criteria: e.criteria.map((ec: any) => ({
             id: ec.criterion.id,
             area: ec.criterion.areaOfConcentration,
             subarea: ec.criterion.subarea,

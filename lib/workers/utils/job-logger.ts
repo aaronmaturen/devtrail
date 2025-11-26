@@ -40,10 +40,23 @@ export class JobLogger {
     return this.log('debug', message);
   }
 
-  async updateProgress(progress: number) {
+  async updateProgress(progress: number, statusMessage?: string) {
+    const data: { progress: number; statusMessage?: string } = {
+      progress: Math.min(100, Math.max(0, progress)),
+    };
+    if (statusMessage !== undefined) {
+      data.statusMessage = statusMessage;
+    }
     await prisma.job.update({
       where: { id: this.jobId },
-      data: { progress: Math.min(100, Math.max(0, progress)) },
+      data,
+    });
+  }
+
+  async setStatusMessage(message: string) {
+    await prisma.job.update({
+      where: { id: this.jobId },
+      data: { statusMessage: message },
     });
   }
 

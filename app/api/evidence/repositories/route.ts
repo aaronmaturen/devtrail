@@ -7,24 +7,18 @@ import { prisma } from '@/lib/db/prisma';
  */
 export async function GET() {
   try {
-    const repositories = await prisma.evidenceEntry.findMany({
-      where: {
-        repository: {
-          not: null,
-        },
-      },
+    // Get unique repositories from GitHubPR table
+    const githubPrs = await prisma.gitHubPR.findMany({
       select: {
-        repository: true,
+        repo: true,
       },
-      distinct: ['repository'],
+      distinct: ['repo'],
       orderBy: {
-        repository: 'asc',
+        repo: 'asc',
       },
     });
 
-    const repoList = repositories
-      .map(r => r.repository)
-      .filter((r): r is string => r !== null);
+    const repoList = githubPrs.map(r => r.repo);
 
     return NextResponse.json({ repositories: repoList });
   } catch (error) {

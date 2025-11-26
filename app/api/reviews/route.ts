@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 
 /**
+ * Safely parse a JSON string to array, returning empty array on failure
+ */
+function safeParseArray(jsonString: string | null | undefined): string[] {
+  if (!jsonString) return [];
+  try {
+    const parsed = JSON.parse(jsonString);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * GET /api/reviews
  * List all review analyses with optional filtering
  */
@@ -48,13 +61,14 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Parse JSON fields
+    // Parse JSON fields with defensive fallbacks
     const parsedAnalyses = analyses.map((analysis) => ({
       ...analysis,
-      themes: JSON.parse(analysis.themes),
-      strengths: JSON.parse(analysis.strengths),
-      growthAreas: JSON.parse(analysis.growthAreas),
-      achievements: JSON.parse(analysis.achievements),
+      summary: analysis.aiSummary || '',
+      themes: safeParseArray(analysis.themes),
+      strengths: safeParseArray(analysis.strengths),
+      growthAreas: safeParseArray(analysis.growthAreas),
+      achievements: safeParseArray(analysis.achievements),
     }));
 
     return NextResponse.json({

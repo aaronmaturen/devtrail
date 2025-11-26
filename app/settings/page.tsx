@@ -157,6 +157,14 @@ export default function SettingsPage() {
           jira: !!configMap.jira_host && !!configMap.jira_email && !!configMap.jira_api_token,
         });
 
+        // Load Jira host and email (non-sensitive fields) for display
+        if (configMap.jira_host) {
+          form.setFieldValue('jiraHost', configMap.jira_host);
+        }
+        if (configMap.jira_email) {
+          form.setFieldValue('jiraEmail', configMap.jira_email);
+        }
+
         // Load selections
         if (configMap.selected_model) {
           form.setFieldValue('selectedModel', configMap.selected_model);
@@ -821,8 +829,10 @@ export default function SettingsPage() {
               </Group>
               <PasswordInput
                 label="API Key"
-                placeholder="sk-ant-..."
-                description="Get your API key from console.anthropic.com"
+                placeholder={keysConfigured.anthropic ? '••••••••••••••••••••' : 'sk-ant-...'}
+                description={keysConfigured.anthropic
+                  ? 'Key is configured. Enter a new key to replace it.'
+                  : 'Get your API key from console.anthropic.com'}
                 data-1p-ignore
                 data-lpignore="true"
                 data-form-type="other"
@@ -844,8 +854,10 @@ export default function SettingsPage() {
               </Group>
               <PasswordInput
                 label="Personal Access Token"
-                placeholder="ghp_..."
-                description="Generate a token with 'repo' scope at github.com/settings/tokens"
+                placeholder={keysConfigured.github ? '••••••••••••••••••••' : 'ghp_...'}
+                description={keysConfigured.github
+                  ? 'Token is configured. Enter a new token to replace it.'
+                  : "Generate a token with 'repo' scope at github.com/settings/tokens"}
                 data-1p-ignore
                 data-lpignore="true"
                 data-form-type="other"
@@ -887,8 +899,10 @@ export default function SettingsPage() {
               />
               <PasswordInput
                 label="API Token"
-                placeholder="Your API token"
-                description="Generate at id.atlassian.com/manage-profile/security/api-tokens"
+                placeholder={keysConfigured.jira ? '••••••••••••••••••••' : 'Your API token'}
+                description={keysConfigured.jira
+                  ? 'Token is configured. Enter a new token to replace it.'
+                  : 'Generate at id.atlassian.com/manage-profile/security/api-tokens'}
                 data-1p-ignore
                 data-lpignore="true"
                 data-form-type="other"

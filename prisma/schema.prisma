@@ -15,61 +15,223 @@ datasource db {
 // ============================================================================
 
 model Criterion {
-  id                    Int       @id
-  areaOfConcentration   String    @map("area_of_concentration")
-  subarea              String
-  description          String
-  prDetectable         Boolean   @map("pr_detectable")
-  evidenceCriteria     EvidenceCriterion[]
+  id                  Int                 @id
+  areaOfConcentration String              @map("area_of_concentration")
+  subarea             String
+  description         String
+  prDetectable        Boolean             @map("pr_detectable")
+  evidenceCriteria    EvidenceCriterion[]
 
   @@map("criteria")
 }
 
-model EvidenceEntry {
-  id          String   @id @default(cuid())
-  type        String   // PR, SLACK, REVIEW, MANUAL, JIRA
-  title       String
-  description String?
-  content     String   @map("content") // JSON string for flexible data
-  confidence  Float?
-  timestamp   DateTime @default(now())
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+// ============================================================================
+// Source Data Models (Phase 1: New Sync Architecture)
+// ============================================================================
 
-  // PR-specific fields (nullable for non-PR evidence)
-  prNumber    Int?     @map("pr_number")
-  prUrl       String?  @map("pr_url")
-  repository  String?  // e.g., "owner/repo"
-  mergedAt    DateTime? @map("merged_at")
+model GitHubPR {
+  id     String  @id @default(cuid())
+  number Int
+  repo   String // "owner/repo"
+  title  String
+  body   String?
+  url    String
 
-  // Slack-specific fields
-  slackLink   String?  @map("slack_link")
+  // Code stats
+  additions    Int
+  deletions    Int
+  changedFiles Int @map("changed_files")
 
-  // PR metrics
-  additions   Int?     // Lines added
-  deletions   Int?     // Lines deleted
-  changedFiles Int?    @map("changed_files")
-  components  String?  // JSON array of components touched
-  metadata    String?  // JSON object for additional data (jira_key, jira_type, etc.)
+  // Dates
+  createdAt DateTime  @map("created_at")
+  mergedAt  DateTime? @map("merged_at")
+
+  // Extracted data
+  components String // JSON array of code components
+  files      String // JSON array of files changed
+
+  // User's relationship to this PR
+  userRole String @map("user_role") // AUTHOR, REVIEWER, ASSIGNEE
+
+  // Review data (if user is reviewer)
+  reviewState String?   @map("review_state") // APPROVED, CHANGES_REQUESTED, COMMENTED
+  reviewBody  String?   @map("review_body")
+  reviewedAt  DateTime? @map("reviewed_at")
 
   // Relations
+  evidence  Evidence[]
+  jiraLinks PRJiraLink[]
+
+  @@unique([repo, number, userRole])
+  @@index([repo])
+  @@index([mergedAt])
+  @@index([userRole])
+  @@map("github_prs")
+}
+
+model GitHubIssue {
+  id     String  @id @default(cuid())
+  number Int
+  repo   String
+  title  String
+  body   String?
+  url    String
+  state  String // open, closed
+
+  createdAt DateTime  @map("created_at")
+  closedAt  DateTime? @map("closed_at")
+
+  labels String // JSON array
+
+  // Relations
+  evidence Evidence[]
+
+  @@unique([repo, number])
+  @@index([repo])
+  @@index([createdAt])
+  @@map("github_issues")
+}
+
+model JiraTicket {
+  id          String  @id @default(cuid())
+  key         String  @unique // PRO-1234
+  summary     String
+  description String?
+
+  // Type and status
+  issueType String  @map("issue_type") // Story, Bug, Task, Spike, Epic
+  status    String
+  priority  String?
+
+  // Metrics
+  storyPoints Float? @map("story_points")
+
+  // Dates
+  createdAt  DateTime  @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  // Computed
+  durationDays Int? @map("duration_days") // Days from created to resolved
+
+  // Sprint/Epic
+  sprint      String?
+  epicKey     String? @map("epic_key")
+  epicSummary String? @map("epic_summary")
+
+  // Links extracted from description
+  figmaLinks      String? @map("figma_links") // JSON array
+  confluenceLinks String? @map("confluence_links") // JSON array
+  otherLinks      String? @map("other_links") // JSON array
+
+  // User's relationship
+  userRole String @map("user_role") // ASSIGNEE, REVIEWER
+
+  // Comments (summarized)
+  commentCount   Int     @default(0) @map("comment_count")
+  commentSummary String? @map("comment_summary") // AI summary of discussion
+
+  // Relations
+  evidence Evidence[]
+  prLinks  PRJiraLink[]
+
+  @@index([userRole])
+  @@index([resolvedAt])
+  @@index([issueType])
+  @@map("jira_tickets")
+}
+
+model SlackMessage {
+  id        String   @id @default(cuid())
+  messageId String?  @map("message_id") // Slack's message ID
+  channel   String
+  author    String
+  content   String
+  timestamp DateTime
+  permalink String?
+
+  // Engagement
+  reactions  String? // JSON array of reactions
+  replyCount Int     @default(0) @map("reply_count")
+
+  // Screenshot (for AI vision analysis)
+  screenshotPath String? @map("screenshot_path")
+
+  // Relations
+  evidence Evidence[]
+
+  @@index([timestamp])
+  @@index([channel])
+  @@map("slack_messages")
+}
+
+// Many-to-many: PRs can link to multiple Jira tickets
+model PRJiraLink {
+  id      String @id @default(cuid())
+  prId    String @map("pr_id")
+  jiraKey String @map("jira_key")
+
+  pr   GitHubPR   @relation(fields: [prId], references: [id], onDelete: Cascade)
+  jira JiraTicket @relation(fields: [jiraKey], references: [key], onDelete: Cascade)
+
+  @@unique([prId, jiraKey])
+  @@map("pr_jira_links")
+}
+
+// ============================================================================
+// Evidence Model (Analyzed Data - Phase 1 Update)
+// ============================================================================
+
+model Evidence {
+  id String @id @default(cuid())
+
+  // Type of evidence
+  type String // PR_AUTHORED, PR_REVIEWED, JIRA_OWNED, JIRA_REVIEWED,
+  // ISSUE_CREATED, SLACK, MANUAL
+
+  // AI-generated analysis (light AI during sync)
+  summary  String // 2-3 sentence summary
+  category String // feature, bug, refactor, docs, devex, recognition, help
+  scope    String // small, medium, large
+
+  // Links to source data (nullable - only one will be set)
+  githubPrId     String? @map("github_pr_id")
+  githubIssueId  String? @map("github_issue_id")
+  jiraTicketId   String? @map("jira_ticket_id")
+  slackMessageId String? @map("slack_message_id")
+
+  // For manual evidence
+  manualTitle   String? @map("manual_title")
+  manualContent String? @map("manual_content")
+
+  // Timestamps
+  occurredAt DateTime @map("occurred_at") // When the work happened
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  githubPr     GitHubPR?     @relation(fields: [githubPrId], references: [id])
+  githubIssue  GitHubIssue?  @relation(fields: [githubIssueId], references: [id])
+  jiraTicket   JiraTicket?   @relation(fields: [jiraTicketId], references: [id])
+  slackMessage SlackMessage? @relation(fields: [slackMessageId], references: [id])
+
   criteria    EvidenceCriterion[]
   attachments Attachment[]
 
-  @@map("evidence_entries")
   @@index([type])
-  @@index([prNumber, repository])
-  @@index([timestamp])
+  @@index([category])
+  @@index([occurredAt])
+  @@map("evidence")
 }
 
 model EvidenceCriterion {
-  evidenceId   String  @map("evidence_id")
-  criterionId  Int     @map("criterion_id")
-  confidence   Float
-  explanation  String?
+  evidenceId  String  @map("evidence_id")
+  criterionId Int     @map("criterion_id")
+  confidence  Float
+  explanation String?
 
-  evidence     EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
-  criterion    Criterion     @relation(fields: [criterionId], references: [id])
+  evidence  Evidence  @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  criterion Criterion @relation(fields: [criterionId], references: [id])
 
   @@id([evidenceId, criterionId])
   @@map("evidence_criteria")
@@ -85,7 +247,7 @@ model Attachment {
   evidenceId   String   @map("evidence_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  evidence     EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
 
   @@map("attachments")
 }
@@ -95,25 +257,25 @@ model Attachment {
 // ============================================================================
 
 model Report {
-  id          String     @id @default(cuid())
-  name        String
-  type        String     // EVIDENCE, SUMMARY, COMPREHENSIVE, CAPITALIZATION, COMPONENT_ANALYSIS, UPWARD, RESUME, REVIEW_PACKAGE
-  content     String     // Markdown content
-  metadata    String?    // JSON metadata
+  id       String  @id @default(cuid())
+  name     String
+  type     String // EVIDENCE, SUMMARY, COMPREHENSIVE, CAPITALIZATION, COMPONENT_ANALYSIS, UPWARD, RESUME, REVIEW_PACKAGE
+  content  String // Markdown content
+  metadata String? // JSON metadata
 
   // Link to job that generated this report
-  jobId       String?    @map("job_id")
+  jobId String? @map("job_id")
 
   // Report statistics
-  evidenceCount Int?     @map("evidence_count")
-  criteriaCount Int?     @map("criteria_count")
+  evidenceCount Int? @map("evidence_count")
+  criteriaCount Int? @map("criteria_count")
 
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("reports")
   @@index([type])
   @@index([createdAt])
+  @@map("reports")
 }
 
 // ============================================================================
@@ -121,24 +283,25 @@ model Report {
 // ============================================================================
 
 model Job {
-  id          String    @id @default(cuid())
-  type        String    // GITHUB_SYNC, REPORT_GENERATION, GOAL_GENERATION, AI_ANALYSIS
-  status      String    // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
-  progress    Int       @default(0) // 0-100
-  logs        String    @default("[]") // JSON array of log messages
-  result      String?   // JSON result data
-  error       String?   // Error message if failed
-  config      String?   // JSON config used for this job
+  id            String  @id @default(cuid())
+  type          String // GITHUB_SYNC, REPORT_GENERATION, GOAL_GENERATION, AI_ANALYSIS
+  status        String // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+  progress      Int     @default(0) // 0-100
+  statusMessage String? @map("status_message") // Current status message for UI display
+  logs          String  @default("[]") // JSON array of log messages
+  result        String? // JSON result data
+  error         String? // Error message if failed
+  config        String? // JSON config used for this job
 
-  startedAt   DateTime?  @map("started_at")
+  startedAt   DateTime? @map("started_at")
   completedAt DateTime? @map("completed_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  @@map("jobs")
   @@index([status])
   @@index([type])
   @@index([createdAt])
+  @@map("jobs")
 }
 
 // ============================================================================
@@ -148,9 +311,9 @@ model Job {
 model Config {
   id          String   @id @default(cuid())
   key         String   @unique // github_token, anthropic_api_key, repos, etc.
-  value       String   // JSON value
+  value       String // JSON value
   encrypted   Boolean  @default(false) // For sensitive data
-  description String?  // Human-readable description
+  description String? // Human-readable description
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("configs")
@@ -161,18 +324,18 @@ model Config {
 // ============================================================================
 
 model ReviewDocument {
-  id          String   @id @default(cuid())
-  year        String   // "2024" or "2024-mid"
-  type        String   // EMPLOYEE, MANAGER
-  content     String   // Full markdown content
-  weight      Int      // Recency weight for analysis
+  id      String @id @default(cuid())
+  year    String // "2024" or "2024-mid"
+  type    String // EMPLOYEE, MANAGER
+  content String // Full markdown content
+  weight  Int // Recency weight for analysis
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([year, type])
-  @@map("review_documents")
   @@index([year])
+  @@map("review_documents")
 }
 
 // ============================================================================
@@ -180,30 +343,30 @@ model ReviewDocument {
 // ============================================================================
 
 model ReviewSession {
-  id            String   @id @default(cuid())
-  status        String   // DRAFT, IN_PROGRESS, COMPLETED
-  currentStep   Int      @default(0) @map("current_step")
+  id            String           @id @default(cuid())
+  status        String // DRAFT, IN_PROGRESS, COMPLETED
+  currentStep   Int              @default(0) @map("current_step")
   responses     ReviewResponse[]
-  componentData String?  @map("component_data") // JSON string
-  contextData   String?  @map("context_data")   // JSON string for goals, reviews, etc.
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  componentData String?          @map("component_data") // JSON string
+  contextData   String?          @map("context_data") // JSON string for goals, reviews, etc.
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
 
   @@map("review_sessions")
 }
 
 model ReviewResponse {
-  id          String        @id @default(cuid())
-  sessionId   String        @map("session_id")
+  id          String   @id @default(cuid())
+  sessionId   String   @map("session_id")
   step        Int
-  questionKey String        @map("question_key") // accomplishments, improvement, goals
-  content     String        // The response content
-  aiGenerated Boolean       @default(false) @map("ai_generated")
-  revisions   Int           @default(0)
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  questionKey String   @map("question_key") // accomplishments, improvement, goals
+  content     String // The response content
+  aiGenerated Boolean  @default(false) @map("ai_generated")
+  revisions   Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  session     ReviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ReviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("review_responses")
 }
@@ -213,97 +376,97 @@ model ReviewResponse {
 // ============================================================================
 
 model Goal {
-  id              String   @id @default(cuid())
-  title           String
-  description     String   // Full SMART goal description
-  category        String   // DEVELOPMENT, LEADERSHIP, TECHNICAL, COMMUNICATION, etc.
-  status          String   @default("ACTIVE") // ACTIVE, COMPLETED, PAUSED, CANCELLED
-  priority        String   @default("MEDIUM") // HIGH, MEDIUM, LOW
+  id          String @id @default(cuid())
+  title       String
+  description String // Full SMART goal description
+  category    String // DEVELOPMENT, LEADERSHIP, TECHNICAL, COMMUNICATION, etc.
+  status      String @default("ACTIVE") // ACTIVE, COMPLETED, PAUSED, CANCELLED
+  priority    String @default("MEDIUM") // HIGH, MEDIUM, LOW
 
   // SMART criteria fields
-  specific        String   // What specifically will be accomplished
-  measurable      String   // How progress will be measured
-  achievable      String   // Why this goal is achievable
-  relevant        String   // How this aligns with career/org needs
-  timeBound       String   // Timeline and deadline
+  specific   String // What specifically will be accomplished
+  measurable String // How progress will be measured
+  achievable String // Why this goal is achievable
+  relevant   String // How this aligns with career/org needs
+  timeBound  String // Timeline and deadline
 
   // Dates
-  startDate       DateTime @default(now()) @map("start_date")
-  targetDate      DateTime @map("target_date")
-  completedDate   DateTime? @map("completed_date")
+  startDate     DateTime  @default(now()) @map("start_date")
+  targetDate    DateTime  @map("target_date")
+  completedDate DateTime? @map("completed_date")
 
   // AI generation context
-  generatedFrom   String?  @map("generated_from") // JSON context used for AI generation
+  generatedFrom String? @map("generated_from") // JSON context used for AI generation
 
   // Progress tracking
-  progressPercent Int      @default(0) @map("progress_percent") // 0-100
+  progressPercent Int @default(0) @map("progress_percent") // 0-100
 
   // Relations
   milestones      GoalMilestone[]
   progressEntries GoalProgress[]
 
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("goals")
   @@index([status])
   @@index([category])
+  @@map("goals")
 }
 
 model GoalMilestone {
-  id          String   @id @default(cuid())
-  goalId      String   @map("goal_id")
-  title       String
-  description String?
-  status      String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
-  targetDate  DateTime @map("target_date")
+  id            String    @id @default(cuid())
+  goalId        String    @map("goal_id")
+  title         String
+  description   String?
+  status        String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
+  targetDate    DateTime  @map("target_date")
   completedDate DateTime? @map("completed_date")
 
   // Relations
-  goal        Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("goal_milestones")
 }
 
 model GoalProgress {
-  id          String   @id @default(cuid())
-  goalId      String   @map("goal_id")
-  progressPercent Int  @map("progress_percent") // 0-100
-  notes       String?  // Progress notes and accomplishments
-  evidence    String?  // JSON array of evidence IDs that support this progress
+  id              String  @id @default(cuid())
+  goalId          String  @map("goal_id")
+  progressPercent Int     @map("progress_percent") // 0-100
+  notes           String? // Progress notes and accomplishments
+  evidence        String? // JSON array of evidence IDs that support this progress
 
   // AI analysis
-  aiSummary   String?  @map("ai_summary") // AI-generated progress summary
+  aiSummary String? @map("ai_summary") // AI-generated progress summary
 
   // Relations
-  goal        Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("goal_progress")
 }
 
 model GoalTemplate {
-  id          String   @id @default(cuid())
+  id          String @id @default(cuid())
   title       String
   description String
   category    String
 
   // SMART template fields
-  specificTemplate    String @map("specific_template")
-  measurableTemplate  String @map("measurable_template")
-  achievableTemplate  String @map("achievable_template")
-  relevantTemplate    String @map("relevant_template")
-  timeBoundTemplate   String @map("time_bound_template")
+  specificTemplate   String @map("specific_template")
+  measurableTemplate String @map("measurable_template")
+  achievableTemplate String @map("achievable_template")
+  relevantTemplate   String @map("relevant_template")
+  timeBoundTemplate  String @map("time_bound_template")
 
   // Usage tracking
-  usageCount  Int      @default(0) @map("usage_count")
+  usageCount Int @default(0) @map("usage_count")
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("goal_templates")
 }
@@ -313,26 +476,26 @@ model GoalTemplate {
 // ============================================================================
 
 model ReviewAnalysis {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Review metadata
-  title       String
-  year        String?  // e.g., "2024" or "2024-mid"
-  reviewType  String   @map("review_type") // EMPLOYEE, MANAGER, PEER, SELF
-  source      String?  // Where the review came from (file name, uploaded, etc.)
+  title      String
+  year       String? // e.g., "2024" or "2024-mid"
+  reviewType String  @map("review_type") // EMPLOYEE, MANAGER, PEER, SELF
+  source     String? // Where the review came from (file name, uploaded, etc.)
 
   // Original content
-  originalText String  @map("original_text") // Full review text
+  originalText String @map("original_text") // Full review text
 
   // AI Analysis Results
-  aiSummary   String   @map("ai_summary") // AI-generated summary
-  themes      String   // JSON array of themes/topics
-  strengths   String   // JSON array of identified strengths
-  growthAreas String   @map("growth_areas") // JSON array of growth areas
-  achievements String  // JSON array of key achievements
+  aiSummary    String @map("ai_summary") // AI-generated summary
+  themes       String // JSON array of themes/topics
+  strengths    String // JSON array of identified strengths
+  growthAreas  String @map("growth_areas") // JSON array of growth areas
+  achievements String // JSON array of key achievements
 
   // Metadata
-  metadata    String?  // JSON for additional structured data
+  metadata String? // JSON for additional structured data
 
   // Analysis quality metrics
   confidenceScore Float? @map("confidence_score") // 0-100
@@ -340,11 +503,90 @@ model ReviewAnalysis {
   // Relations to evidence
   evidenceLinks String? @map("evidence_links") // JSON array of evidence IDs that relate to this review
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("review_analyses")
   @@index([year])
   @@index([reviewType])
   @@index([createdAt])
+  @@map("review_analyses")
+}
+
+// ============================================================================
+// Report Builder Models (Block-based Coda-style Reports)
+// ============================================================================
+
+model ReportDocument {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  status      String  @default("DRAFT") // DRAFT, PUBLISHED, ARCHIVED
+
+  // Context configuration for AI generation
+  contextConfig String @default("{}") @map("context_config") // JSON: { evidenceDateRange, includeGoals, includeReviews, etc. }
+
+  // Relations
+  blocks ReportBlock[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("report_documents")
+}
+
+model ReportBlock {
+  id         String @id @default(cuid())
+  documentId String @map("document_id")
+  type       String // PROMPT_RESPONSE, TEXT, HEADING, DIVIDER
+
+  // For PROMPT_RESPONSE blocks: prompt is the question, content is the AI response
+  prompt  String @default("") // The instruction/question for AI
+  content String @default("") // The response content (AI-generated or manual)
+
+  // Ordering
+  position Int @default(0)
+
+  // Metadata for AI-generated content
+  metadata String @default("{}") // JSON: { model, temperature, tokensUsed, generatedAt, etc. }
+
+  // Relations
+  document  ReportDocument        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  revisions ReportBlockRevision[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([documentId])
+  @@index([type])
+  @@index([position])
+  @@map("report_blocks")
+}
+
+model ReportBlockRevision {
+  id      String @id @default(cuid())
+  blockId String @map("block_id")
+
+  // Content snapshot
+  previousContent String @map("previous_content")
+  newContent      String @map("new_content")
+
+  // Change tracking
+  changeType String // MANUAL_EDIT, AGENT_GENERATION, AGENT_REFINEMENT, REGENERATE
+  changedBy  String // USER, AGENT
+
+  // Agent context (if AI-generated)
+  agentModel  String? @map("agent_model") // claude-3-5-sonnet, etc.
+  agentPrompt String? @map("agent_prompt") // The prompt/instruction used
+
+  // Relations
+  block ReportBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([blockId])
+  @@index([changeType])
+  @@index([createdAt])
+  @@map("report_block_revisions")
 }

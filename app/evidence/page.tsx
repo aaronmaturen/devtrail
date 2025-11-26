@@ -26,6 +26,7 @@ import {
   IconFileText,
   IconEdit,
   IconChevronDown,
+  IconTicket,
 } from "@tabler/icons-react";
 import SlackEvidenceModal from "@/components/SlackEvidenceModal";
 
@@ -53,6 +54,7 @@ type Stats = {
   slack: number;
   reviews: number;
   manual: number;
+  jira: number;
 };
 
 type Criterion = {
@@ -69,6 +71,7 @@ export default function EvidencePage() {
     slack: 0,
     reviews: 0,
     manual: 0,
+    jira: 0,
   });
   const [loading, setLoading] = useState(true);
   const [slackModalOpened, setSlackModalOpened] = useState(false);
@@ -117,31 +120,57 @@ export default function EvidencePage() {
       .catch((error) => console.error("Failed to refresh evidence:", error));
   };
 
-  const typeConfig = {
-    PR: {
+  // Stats display config - just 5 high-level categories
+  const statsConfig = {
+    github: {
       color: "brand",
       icon: IconBrandGithub,
-      label: "GitHub PRs",
+      label: "GitHub",
       statKey: "github" as keyof Stats,
     },
-    SLACK: {
+    jira: {
+      color: "blue",
+      icon: IconTicket,
+      label: "Jira",
+      statKey: "jira" as keyof Stats,
+    },
+    slack: {
       color: "forest",
       icon: IconMessage,
-      label: "Slack Messages",
+      label: "Slack",
       statKey: "slack" as keyof Stats,
     },
-    REVIEW: {
+    reviews: {
       color: "moss",
       icon: IconFileText,
       label: "Reviews",
       statKey: "reviews" as keyof Stats,
     },
-    MANUAL: {
+    manual: {
       color: "bark",
       icon: IconEdit,
       label: "Manual",
       statKey: "manual" as keyof Stats,
     },
+  };
+
+  // Type config for mapping evidence types to display - used for badges/icons
+  const typeConfig: Record<string, { color: string; icon: typeof IconBrandGithub; label: string }> = {
+    // GitHub types
+    PR: { color: "brand", icon: IconBrandGithub, label: "GitHub PR" },
+    GITHUB_PR: { color: "brand", icon: IconBrandGithub, label: "GitHub PR" },
+    GITHUB_ISSUE: { color: "brand", icon: IconBrandGithub, label: "GitHub Issue" },
+    PR_AUTHORED: { color: "brand", icon: IconBrandGithub, label: "PR Authored" },
+    PR_REVIEWED: { color: "cyan", icon: IconBrandGithub, label: "PR Reviewed" },
+    ISSUE_CREATED: { color: "teal", icon: IconBrandGithub, label: "Issue" },
+    // Jira types
+    JIRA: { color: "blue", icon: IconTicket, label: "Jira" },
+    JIRA_OWNED: { color: "blue", icon: IconTicket, label: "Jira" },
+    JIRA_REVIEWED: { color: "grape", icon: IconTicket, label: "Jira" },
+    // Other types
+    SLACK: { color: "forest", icon: IconMessage, label: "Slack" },
+    REVIEW: { color: "moss", icon: IconFileText, label: "Review" },
+    MANUAL: { color: "bark", icon: IconEdit, label: "Manual" },
   };
 
   if (loading) {
@@ -162,7 +191,7 @@ export default function EvidencePage() {
           <div>
             <Title order={1}>Evidence</Title>
             <Text c="dimmed" size="sm">
-              {stats.github + stats.slack + stats.reviews + stats.manual} total
+              {stats.github + stats.slack + stats.reviews + stats.manual + stats.jira} total
               evidence entries
             </Text>
           </div>
@@ -204,12 +233,12 @@ export default function EvidencePage() {
         />
 
         {/* Stats Grid */}
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
-          {Object.entries(typeConfig).map(([type, config]) => {
+        <SimpleGrid cols={{ base: 2, sm: 3, md: 5 }} spacing="lg">
+          {Object.entries(statsConfig).map(([key, config]) => {
             const Icon = config.icon;
             const count = stats[config.statKey] || 0;
             return (
-              <Paper key={type} withBorder p="md" radius="md">
+              <Paper key={key} withBorder p="md" radius="md">
                 <Group>
                   <Icon
                     size={32}
@@ -326,7 +355,7 @@ export default function EvidencePage() {
                               title={ec.criterion.description}
                             >
                               {ec.criterion.subarea} (
-                              {Math.round(ec.confidence)}%)
+                              {Math.round(ec.confidence * 100)}%)
                             </Badge>
                           ))}
                           {item.criteria.length > 3 && (

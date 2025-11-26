@@ -1,8 +1,6 @@
-import { anthropic } from '@ai-sdk/anthropic';
 import { devtrailTools } from '@/lib/ai/tools';
 
 export const evidenceReviewerAgent = {
-  model: anthropic('claude-3-5-sonnet-20241022'),
   system: `You are an Evidence Reviewer AI for DevTrail, specialized in reviewing and enhancing performance evidence documentation.
 
 Your role is to:

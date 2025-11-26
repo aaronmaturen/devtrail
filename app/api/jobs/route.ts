@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
         createdAt: job.createdAt,
         startedAt: job.startedAt,
         completedAt: job.completedAt,
+        logs: job.logs ? JSON.parse(job.logs) : [],
+        result: job.result ? JSON.parse(job.result) : null,
+        config: job.config ? JSON.parse(job.config) : null,
       }))
     );
   } catch (error) {

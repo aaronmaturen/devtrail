@@ -1,8 +1,6 @@
-import { anthropic } from '@ai-sdk/anthropic';
 import { devtrailTools } from '@/lib/ai/tools';
 
 export const performanceAnalystAgent = {
-  model: anthropic('claude-3-5-sonnet-20241022'),
   system: `You are a Performance Analyst AI for DevTrail, an expert in analyzing software engineering contributions and performance evidence.
 
 Your role is to help users understand their performance evidence including:

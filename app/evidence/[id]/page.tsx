@@ -35,8 +35,11 @@ import {
   IconDownload,
   IconExternalLink,
   IconX,
+  IconTicket,
+  IconLink,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import ReactMarkdown from 'react-markdown';
 
 type Evidence = {
   id: string;
@@ -75,6 +78,18 @@ type Evidence = {
     size: number;
     path: string;
     createdAt: string;
+  }>;
+  linkedJiraTickets: Array<{
+    key: string;
+    summary: string;
+    issueType: string;
+    status: string;
+  }>;
+  linkedPRs: Array<{
+    repo: string;
+    number: number;
+    title: string;
+    url: string;
   }>;
 };
 
@@ -143,7 +158,18 @@ export default function EvidenceDetailPage() {
   };
 
   const typeConfig = {
+    // GitHub types
     PR: { color: 'blue', icon: IconBrandGithub, label: 'Pull Request' },
+    GITHUB_PR: { color: 'blue', icon: IconBrandGithub, label: 'GitHub PR' },
+    GITHUB_ISSUE: { color: 'blue', icon: IconBrandGithub, label: 'GitHub Issue' },
+    PR_AUTHORED: { color: 'blue', icon: IconBrandGithub, label: 'PR Authored' },
+    PR_REVIEWED: { color: 'cyan', icon: IconBrandGithub, label: 'PR Reviewed' },
+    ISSUE_CREATED: { color: 'teal', icon: IconBrandGithub, label: 'Issue Created' },
+    // Jira types
+    JIRA: { color: 'indigo', icon: IconTicket, label: 'Jira Ticket' },
+    JIRA_OWNED: { color: 'indigo', icon: IconTicket, label: 'Jira Owned' },
+    JIRA_REVIEWED: { color: 'grape', icon: IconTicket, label: 'Jira Reviewed' },
+    // Other types
     SLACK: { color: 'green', icon: IconMessage, label: 'Slack Message' },
     REVIEW: { color: 'violet', icon: IconFileText, label: 'Review' },
     MANUAL: { color: 'orange', icon: IconPencil, label: 'Manual Entry' },
@@ -262,7 +288,28 @@ export default function EvidenceDetailPage() {
                   <Text fw={600} mb="xs">
                     Description
                   </Text>
-                  <Text>{evidence.description}</Text>
+                  <Paper withBorder p="md" radius="md">
+                    <div className="markdown-content">
+                      <ReactMarkdown
+                        components={{
+                          h1: ({ children }) => <Title order={3} mb="sm">{children}</Title>,
+                          h2: ({ children }) => <Title order={4} mb="xs">{children}</Title>,
+                          h3: ({ children }) => <Title order={5} mb="xs">{children}</Title>,
+                          p: ({ children }) => <Text mb="sm">{children}</Text>,
+                          ul: ({ children }) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '0.5rem' }}>{children}</ul>,
+                          ol: ({ children }) => <ol style={{ paddingLeft: '1.5rem', marginBottom: '0.5rem' }}>{children}</ol>,
+                          li: ({ children }) => <li style={{ marginBottom: '0.25rem' }}><Text component="span" size="sm">{children}</Text></li>,
+                          code: ({ children }) => <code style={{ backgroundColor: 'var(--mantine-color-gray-1)', padding: '0.125rem 0.25rem', borderRadius: '3px', fontSize: '0.875em' }}>{children}</code>,
+                          pre: ({ children }) => <Paper withBorder p="sm" mb="sm" style={{ backgroundColor: 'var(--mantine-color-gray-0)', overflow: 'auto' }}>{children}</Paper>,
+                          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--mantine-color-blue-6)' }}>{children}</a>,
+                          blockquote: ({ children }) => <Paper withBorder p="sm" mb="sm" style={{ borderLeft: '3px solid var(--mantine-color-blue-5)', backgroundColor: 'var(--mantine-color-gray-0)' }}>{children}</Paper>,
+                          img: ({ src, alt }) => <Image src={src} alt={alt || ''} radius="sm" mb="sm" fit="contain" style={{ maxWidth: '100%' }} />,
+                        }}
+                      >
+                        {evidence.description}
+                      </ReactMarkdown>
+                    </div>
+                  </Paper>
                 </div>
               </>
             )}
@@ -320,9 +367,9 @@ export default function EvidenceDetailPage() {
                     Components Affected
                   </Text>
                   <Group gap="xs">
-                    {JSON.parse(evidence.components).map((component: { name: string; count: number; depth: number }, idx: number) => (
+                    {JSON.parse(evidence.components).map((component: string | { name: string }, idx: number) => (
                       <Badge key={idx} variant="light" size="lg">
-                        {component.name}
+                        {typeof component === 'string' ? component : component.name}
                       </Badge>
                     ))}
                   </Group>
@@ -369,6 +416,87 @@ export default function EvidenceDetailPage() {
                 </div>
               </>
             )}
+
+            {/* Linked Jira Tickets (for PR evidence) */}
+            {evidence.linkedJiraTickets && evidence.linkedJiraTickets.length > 0 && (
+              <>
+                <Divider />
+                <div>
+                  <Group mb="sm">
+                    <IconLink size={20} />
+                    <Text fw={600}>Related Jira Tickets</Text>
+                  </Group>
+                  <Stack gap="xs">
+                    {evidence.linkedJiraTickets.map((ticket) => (
+                      <Paper key={ticket.key} withBorder p="sm" radius="md">
+                        <Group justify="space-between">
+                          <Group gap="sm">
+                            <IconTicket size={18} color="var(--mantine-color-blue-6)" />
+                            <div>
+                              <Group gap="xs">
+                                <Badge size="sm" variant="light" color="blue">
+                                  {ticket.key}
+                                </Badge>
+                                <Badge size="xs" variant="outline">
+                                  {ticket.issueType}
+                                </Badge>
+                                <Badge size="xs" variant="dot" color={ticket.status === 'Done' ? 'green' : 'gray'}>
+                                  {ticket.status}
+                                </Badge>
+                              </Group>
+                              <Text size="sm" mt={4}>{ticket.summary}</Text>
+                            </div>
+                          </Group>
+                        </Group>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </div>
+              </>
+            )}
+
+            {/* Linked PRs (for Jira evidence) */}
+            {evidence.linkedPRs && evidence.linkedPRs.length > 0 && (
+              <>
+                <Divider />
+                <div>
+                  <Group mb="sm">
+                    <IconLink size={20} />
+                    <Text fw={600}>Related Pull Requests</Text>
+                  </Group>
+                  <Stack gap="xs">
+                    {evidence.linkedPRs.map((pr) => (
+                      <Paper key={`${pr.repo}-${pr.number}`} withBorder p="sm" radius="md">
+                        <Group justify="space-between">
+                          <Group gap="sm">
+                            <IconBrandGithub size={18} />
+                            <div>
+                              <Group gap="xs">
+                                <Badge size="sm" variant="light">
+                                  {pr.repo}#{pr.number}
+                                </Badge>
+                              </Group>
+                              <Text size="sm" mt={4}>{pr.title}</Text>
+                            </div>
+                          </Group>
+                          <Button
+                            component="a"
+                            href={pr.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            size="xs"
+                            variant="subtle"
+                            leftSection={<IconExternalLink size={14} />}
+                          >
+                            View
+                          </Button>
+                        </Group>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </div>
+              </>
+            )}
           </Stack>
         </Card>
 
@@ -401,7 +529,7 @@ export default function EvidenceDetailPage() {
                                 {ec.criterion.subarea}
                               </Badge>
                               <Badge color="teal" variant="filled">
-                                {Math.round(ec.confidence)}% confidence
+                                {Math.round(ec.confidence * 100)}% confidence
                               </Badge>
                             </Group>
                           </Group>

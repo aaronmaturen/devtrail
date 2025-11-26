@@ -37,25 +37,25 @@ export async function getAnthropicApiKey(): Promise<string> {
 export const MODEL_CONFIGS = {
   // Fast model for quick analysis and tool use
   FAST: {
-    model: 'claude-3-5-haiku-20241022',
+    model: 'claude-haiku-4-5-20250929',
     temperature: 0.7,
     maxTokens: 4096,
   },
   // Standard model for most AI tasks
   STANDARD: {
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     temperature: 0.7,
     maxTokens: 8192,
   },
   // Long context model for comprehensive analysis
   EXTENDED: {
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     temperature: 0.7,
     maxTokens: 16384,
   },
   // Creative model for generating narratives and summaries
   CREATIVE: {
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     temperature: 0.9,
     maxTokens: 8192,
   },
@@ -82,6 +82,43 @@ export function getAnthropicModel(
 export async function initializeAI(config: keyof typeof MODEL_CONFIGS = 'STANDARD') {
   const apiKey = await getAnthropicApiKey();
   return getAnthropicModel(apiKey, config);
+}
+
+/**
+ * Default model ID used when no model is configured in the database
+ */
+export const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
+
+/**
+ * Get the configured model ID from the database
+ * Falls back to DEFAULT_MODEL if not configured
+ */
+export async function getConfiguredModelId(): Promise<string> {
+  try {
+    const config = await prisma.config.findUnique({
+      where: { key: 'anthropic_model' }
+    });
+
+    if (config?.value) {
+      const parsed = JSON.parse(config.value);
+      if (typeof parsed === 'string' && parsed) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.warn('Could not retrieve model from database:', error);
+  }
+
+  return DEFAULT_MODEL;
+}
+
+/**
+ * Get a configured Anthropic model instance from database settings
+ * This is the primary way to get a model for AI SDK usage
+ */
+export async function getConfiguredModel() {
+  const modelId = await getConfiguredModelId();
+  return anthropic(modelId);
 }
 
 /**

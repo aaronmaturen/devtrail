@@ -2,6 +2,49 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 
+// Import sync tools for re-export
+import {
+  searchUserPRsTool,
+  searchUserIssuesTool,
+  fetchPRDetailsTool,
+  getExistingGitHubPRTool,
+  githubTools,
+} from './github-tools';
+
+import {
+  searchUserJiraTicketsTool,
+  fetchJiraTicketTool,
+  fetchJiraEpicTool,
+  getExistingJiraTicketTool,
+  jiraTools,
+} from './jira-tools';
+
+import {
+  extractJiraKeyTool,
+  extractLinksTool,
+  extractComponentsTool,
+  parsePRTitleTool,
+  extractionTools,
+} from './extraction-tools';
+
+import {
+  saveGitHubPRTool,
+  saveJiraTicketTool,
+  saveEvidenceTool,
+  linkPRToJiraTool,
+  saveCriteriaMatchesTool,
+  updateEvidenceTool,
+  storageTools,
+} from './storage-tools';
+
+import {
+  summarizeTool,
+  categorizeTool,
+  estimateScopeTool,
+  matchCriteriaTool,
+  analysisTools,
+} from './analysis-tools';
+
 /**
  * AI Tools for DevTrail Agents
  *
@@ -19,7 +62,7 @@ import { prisma } from '@/lib/db/prisma';
  */
 export const getEvidenceTool = tool({
   description: 'Retrieve evidence entries from the database. Can filter by type (PR, SLACK, REVIEW, MANUAL), date range, repository, or criteria.',
-  parameters: z.object({
+  inputSchema: z.object({
     type: z.enum(['PR', 'SLACK', 'REVIEW', 'MANUAL']).optional().describe('Filter by evidence type'),
     startDate: z.string().optional().describe('Start date for filtering evidence (ISO format)'),
     endDate: z.string().optional().describe('End date for filtering evidence (ISO format)'),
@@ -49,21 +92,44 @@ export const getEvidenceTool = tool({
         where.repository = repository;
       }
 
-      // Criterion filter
+      // Handle criterion filter via EvidenceCriterion
       if (criterionId) {
-        where.criteria = {
-          some: {
-            criterionId: criterionId,
-          },
-        };
+        const matchingEvidence = await prisma.evidenceCriterion.findMany({
+          where: { criterionId },
+          select: { evidenceId: true },
+        });
+        where.id = { in: matchingEvidence.map(e => e.evidenceId) };
       }
 
-      const evidence = await prisma.evidenceEntry.findMany({
+      // Map display types to internal types
+      const displayToInternalTypes: Record<string, string[]> = {
+        PR: ['PR_AUTHORED', 'PR_REVIEWED', 'ISSUE_CREATED'],
+        JIRA: ['JIRA_OWNED', 'JIRA_REVIEWED'],
+        SLACK: ['SLACK'],
+        MANUAL: ['MANUAL'],
+        REVIEW: ['MANUAL'],
+      };
+
+      // Convert type filter to internal types
+      if (where.type && displayToInternalTypes[where.type]) {
+        where.type = { in: displayToInternalTypes[where.type] };
+      }
+
+      // Convert timestamp to occurredAt
+      if (where.timestamp) {
+        where.occurredAt = where.timestamp;
+        delete where.timestamp;
+      }
+
+      const evidenceEntries = await prisma.evidence.findMany({
         where,
         take: limit,
         skip: offset,
-        orderBy: { timestamp: 'desc' },
+        orderBy: { occurredAt: 'desc' },
         include: {
+          githubPr: true,
+          jiraTicket: true,
+          slackMessage: true,
           criteria: {
             include: {
               criterion: true,
@@ -72,35 +138,83 @@ export const getEvidenceTool = tool({
         },
       });
 
+      // Map internal types to display types
+      const typeDisplayMap: Record<string, string> = {
+        PR_AUTHORED: 'PR',
+        PR_REVIEWED: 'PR',
+        JIRA_OWNED: 'JIRA',
+        JIRA_REVIEWED: 'JIRA',
+        ISSUE_CREATED: 'PR',
+        SLACK: 'SLACK',
+        MANUAL: 'MANUAL',
+      };
+
       return {
         success: true,
-        count: evidence.length,
-        evidence: evidence.map(e => ({
-          id: e.id,
-          type: e.type,
-          title: e.title,
-          description: e.description,
-          timestamp: e.timestamp.toISOString(),
-          prNumber: e.prNumber,
-          prUrl: e.prUrl,
-          repository: e.repository,
-          slackLink: e.slackLink,
-          confidence: e.confidence,
-          metrics: {
-            additions: e.additions,
-            deletions: e.deletions,
-            changedFiles: e.changedFiles,
-            components: e.components ? JSON.parse(e.components) : null,
-          },
-          criteria: e.criteria.map(ec => ({
-            id: ec.criterion.id,
-            area: ec.criterion.areaOfConcentration,
-            subarea: ec.criterion.subarea,
-            description: ec.criterion.description,
-            confidence: ec.confidence,
-            explanation: ec.explanation,
-          })),
-        })),
+        count: evidenceEntries.length,
+        evidence: evidenceEntries.map(e => {
+          // Build title and other fields based on source
+          let title = e.summary;
+          let description = e.summary;
+          let prNumber: number | null = null;
+          let prUrl: string | null = null;
+          let repository: string | null = null;
+          let slackLink: string | null = null;
+          let additions: number | null = null;
+          let deletions: number | null = null;
+          let changedFiles: number | null = null;
+          let components: string[] | null = null;
+
+          if (e.githubPr) {
+            title = e.githubPr.title;
+            description = e.githubPr.body || e.summary;
+            prNumber = e.githubPr.number;
+            prUrl = e.githubPr.url;
+            repository = e.githubPr.repo;
+            additions = e.githubPr.additions;
+            deletions = e.githubPr.deletions;
+            changedFiles = e.githubPr.changedFiles;
+            components = e.githubPr.components ? JSON.parse(e.githubPr.components) : null;
+          } else if (e.jiraTicket) {
+            title = `${e.jiraTicket.key}: ${e.jiraTicket.summary}`;
+            description = e.jiraTicket.description || e.summary;
+          } else if (e.slackMessage) {
+            title = e.slackMessage.content.substring(0, 100);
+            description = e.slackMessage.content;
+            slackLink = e.slackMessage.permalink;
+          } else if (e.manualTitle) {
+            title = e.manualTitle;
+            description = e.manualContent || e.summary;
+          }
+
+          return {
+            id: e.id,
+            type: typeDisplayMap[e.type] || 'MANUAL',
+            internalType: e.type,
+            title,
+            description,
+            timestamp: e.occurredAt.toISOString(),
+            prNumber,
+            prUrl,
+            repository,
+            slackLink,
+            confidence: 1.0, // Default confidence
+            metrics: {
+              additions,
+              deletions,
+              changedFiles,
+              components,
+            },
+            criteria: e.criteria.map(ec => ({
+              id: ec.criterion.id,
+              area: ec.criterion.areaOfConcentration,
+              subarea: ec.criterion.subarea,
+              description: ec.criterion.description,
+              confidence: ec.confidence,
+              explanation: ec.explanation,
+            })),
+          };
+        }),
       };
     } catch (error) {
       return {
@@ -117,7 +231,7 @@ export const getEvidenceTool = tool({
  */
 export const getCriteriaTool = tool({
   description: 'Retrieve performance review criteria from the database. These are the standards used to evaluate work performance.',
-  parameters: z.object({
+  inputSchema: z.object({
     areaOfConcentration: z.string().optional().describe('Filter by area of concentration (e.g., "Engineering Experience", "Delivery", "Communication")'),
     subarea: z.string().optional().describe('Filter by subarea (e.g., "Quality & testing", "Software design & architecture")'),
     prDetectable: z.boolean().optional().describe('Only show PR-detectable criteria'),
@@ -182,7 +296,7 @@ export const getCriteriaTool = tool({
  */
 export const analyzeEvidenceTool = tool({
   description: 'Analyze how evidence maps to performance criteria with match counts, confidence scores, and examples.',
-  parameters: z.object({
+  inputSchema: z.object({
     startDate: z.string().optional().describe('Start date for analysis (ISO format)'),
     endDate: z.string().optional().describe('End date for analysis (ISO format)'),
     minConfidence: z.number().min(0).max(1).default(0.5).describe('Minimum confidence threshold (0-1)'),
@@ -193,15 +307,18 @@ export const analyzeEvidenceTool = tool({
 
       // Date range filter
       if (startDate || endDate) {
-        where.timestamp = {};
-        if (startDate) where.timestamp.gte = new Date(startDate);
-        if (endDate) where.timestamp.lte = new Date(endDate);
+        where.occurredAt = {};
+        if (startDate) where.occurredAt.gte = new Date(startDate);
+        if (endDate) where.occurredAt.lte = new Date(endDate);
       }
 
-      // Get all evidence with criteria
-      const evidence = await prisma.evidenceEntry.findMany({
+      // Get all evidence entries with criteria
+      const evidenceWithCriteria = await prisma.evidence.findMany({
         where,
         include: {
+          githubPr: true,
+          jiraTicket: true,
+          slackMessage: true,
           criteria: {
             where: {
               confidence: {
@@ -215,6 +332,16 @@ export const analyzeEvidenceTool = tool({
         },
       });
 
+      // Create title map
+      const titleMap = new Map(evidenceWithCriteria.map(e => {
+        let title = e.summary;
+        if (e.githubPr) title = e.githubPr.title;
+        else if (e.jiraTicket) title = `${e.jiraTicket.key}: ${e.jiraTicket.summary}`;
+        else if (e.slackMessage) title = e.slackMessage.content.substring(0, 100);
+        else if (e.manualTitle) title = e.manualTitle;
+        return [e.id, title];
+      }));
+
       // Aggregate by criterion
       const criterionMap = new Map<number, {
         criterion: any;
@@ -224,15 +351,16 @@ export const analyzeEvidenceTool = tool({
         examples: string[];
       }>();
 
-      evidence.forEach(e => {
+      evidenceWithCriteria.forEach(e => {
         e.criteria.forEach(ec => {
           const existing = criterionMap.get(ec.criterionId);
+          const title = titleMap.get(e.id) || 'Unknown';
           if (existing) {
             existing.evidenceCount++;
             existing.totalConfidence += ec.confidence;
             existing.avgConfidence = existing.totalConfidence / existing.evidenceCount;
             if (existing.examples.length < 3) {
-              existing.examples.push(e.title);
+              existing.examples.push(title);
             }
           } else {
             criterionMap.set(ec.criterionId, {
@@ -240,7 +368,7 @@ export const analyzeEvidenceTool = tool({
               evidenceCount: 1,
               totalConfidence: ec.confidence,
               avgConfidence: ec.confidence,
-              examples: [e.title],
+              examples: [title],
             });
           }
         });
@@ -274,7 +402,7 @@ export const analyzeEvidenceTool = tool({
 
       return {
         success: true,
-        totalEvidence: evidence.length,
+        totalEvidence: evidenceWithCriteria.length,
         totalCriteria: analysis.length,
         analysis,
         byArea,
@@ -294,7 +422,7 @@ export const analyzeEvidenceTool = tool({
  */
 export const getGoalsTool = tool({
   description: 'Retrieve career goals from the database, including SMART goals, progress tracking, and milestones.',
-  parameters: z.object({
+  inputSchema: z.object({
     status: z.enum(['ACTIVE', 'COMPLETED', 'PAUSED', 'CANCELLED', 'ALL']).default('ACTIVE').describe('Filter by goal status'),
     category: z.string().optional().describe('Filter by category (e.g., "DEVELOPMENT", "LEADERSHIP", "TECHNICAL", "COMMUNICATION")'),
     includeProgress: z.boolean().default(true).describe('Include progress entries'),
@@ -382,7 +510,7 @@ export const getGoalsTool = tool({
  */
 export const getEvidenceStatsTool = tool({
   description: 'Get summary statistics about evidence, including counts by type, repository analysis, and criteria coverage.',
-  parameters: z.object({
+  inputSchema: z.object({
     startDate: z.string().optional().describe('Start date for stats (ISO format)'),
     endDate: z.string().optional().describe('End date for stats (ISO format)'),
   }),
@@ -391,41 +519,54 @@ export const getEvidenceStatsTool = tool({
       const where: any = {};
 
       if (startDate || endDate) {
-        where.timestamp = {};
-        if (startDate) where.timestamp.gte = new Date(startDate);
-        if (endDate) where.timestamp.lte = new Date(endDate);
+        where.occurredAt = {};
+        if (startDate) where.occurredAt.gte = new Date(startDate);
+        if (endDate) where.occurredAt.lte = new Date(endDate);
       }
 
-      const [evidence, criteria] = await Promise.all([
-        prisma.evidenceEntry.findMany({
-          where,
-          include: {
-            criteria: {
-              include: {
-                criterion: true,
-              },
+      // Get evidence entries with all related data
+      const evidenceWithCriteria = await prisma.evidence.findMany({
+        where,
+        include: {
+          githubPr: true,
+          criteria: {
+            include: {
+              criterion: true,
             },
           },
-        }),
-        prisma.criterion.findMany(),
-      ]);
+        },
+      });
+      const criteria = await prisma.criterion.findMany();
 
-      // Count by type
-      const byType = evidence.reduce((acc, e) => {
-        acc[e.type] = (acc[e.type] || 0) + 1;
+      // Map internal types to display types
+      const typeDisplayMap: Record<string, string> = {
+        PR_AUTHORED: 'PR',
+        PR_REVIEWED: 'PR',
+        JIRA_OWNED: 'JIRA',
+        JIRA_REVIEWED: 'JIRA',
+        ISSUE_CREATED: 'PR',
+        SLACK: 'SLACK',
+        MANUAL: 'MANUAL',
+      };
+
+      // Count by display type
+      const byType = evidenceWithCriteria.reduce((acc, e) => {
+        const displayType = typeDisplayMap[e.type] || 'MANUAL';
+        acc[displayType] = (acc[displayType] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
       // Count by repository (PRs only)
-      const byRepository = evidence
-        .filter(e => e.repository)
+      const byRepository = evidenceWithCriteria
+        .filter(e => e.githubPr?.repo)
         .reduce((acc, e) => {
-          acc[e.repository!] = (acc[e.repository!] || 0) + 1;
+          const repo = e.githubPr!.repo;
+          acc[repo] = (acc[repo] || 0) + 1;
           return acc;
         }, {} as Record<string, number>);
 
       // Criteria coverage
-      const criteriaMatches = evidence.flatMap(e => e.criteria);
+      const criteriaMatches = evidenceWithCriteria.flatMap(e => e.criteria);
       const coveredCriteriaIds = new Set(criteriaMatches.map(c => c.criterionId));
 
       // Group matches by area
@@ -437,7 +578,7 @@ export const getEvidenceStatsTool = tool({
 
       return {
         success: true,
-        totalEvidence: evidence.length,
+        totalEvidence: evidenceWithCriteria.length,
         byType,
         repositoryCount: Object.keys(byRepository).length,
         byRepository,
@@ -446,8 +587,8 @@ export const getEvidenceStatsTool = tool({
         coveredCriteria: coveredCriteriaIds.size,
         totalCriteria: criteria.length,
         matchesByArea: byArea,
-        averageMatchesPerEvidence: evidence.length > 0
-          ? (criteriaMatches.length / evidence.length).toFixed(2)
+        averageMatchesPerEvidence: evidenceWithCriteria.length > 0
+          ? (criteriaMatches.length / evidenceWithCriteria.length).toFixed(2)
           : '0',
       };
     } catch (error) {
@@ -465,7 +606,7 @@ export const getEvidenceStatsTool = tool({
  */
 export const getReviewDocumentsTool = tool({
   description: 'Fetch performance review documents by year or type for context in performance analysis.',
-  parameters: z.object({
+  inputSchema: z.object({
     year: z.string().optional().describe('Filter by year (e.g., "2024" or "2024-mid")'),
     type: z.enum(['EMPLOYEE', 'MANAGER', 'ALL']).default('ALL').describe('Filter by review type'),
   }),
@@ -517,7 +658,7 @@ export const getReviewDocumentsTool = tool({
  */
 export const getReviewAnalysesTool = tool({
   description: 'Fetch AI-analyzed performance reviews with extracted themes, strengths, growth areas, and achievements. This provides personalized context from past performance reviews.',
-  parameters: z.object({
+  inputSchema: z.object({
     year: z.string().optional().describe('Filter by year (e.g., "2024" or "2024-mid")'),
     reviewType: z.string().optional().describe('Filter by review type (EMPLOYEE, MANAGER, PEER, SELF)'),
     limit: z.number().optional().default(5).describe('Maximum number of analyses to return'),
@@ -616,3 +757,83 @@ export const devtrailTools = {
 };
 
 export type DevTrailTools = typeof devtrailTools;
+
+// ============================================================================
+// Sync Tools (Phase 2+ of Sync Architecture)
+// ============================================================================
+
+// Re-export all sync tools
+export {
+  // GitHub
+  searchUserPRsTool,
+  searchUserIssuesTool,
+  fetchPRDetailsTool,
+  getExistingGitHubPRTool,
+  githubTools,
+  // Jira
+  searchUserJiraTicketsTool,
+  fetchJiraTicketTool,
+  fetchJiraEpicTool,
+  getExistingJiraTicketTool,
+  jiraTools,
+  // Extraction
+  extractJiraKeyTool,
+  extractLinksTool,
+  extractComponentsTool,
+  parsePRTitleTool,
+  extractionTools,
+  // Storage
+  saveGitHubPRTool,
+  saveJiraTicketTool,
+  saveEvidenceTool,
+  linkPRToJiraTool,
+  saveCriteriaMatchesTool,
+  updateEvidenceTool,
+  storageTools,
+  // Analysis
+  summarizeTool,
+  categorizeTool,
+  estimateScopeTool,
+  matchCriteriaTool,
+  analysisTools,
+};
+
+/**
+ * All sync tools combined for use with sync agents
+ */
+export const syncTools = {
+  // GitHub
+  searchUserPRs: searchUserPRsTool,
+  searchUserIssues: searchUserIssuesTool,
+  fetchPRDetails: fetchPRDetailsTool,
+  getExistingGitHubPR: getExistingGitHubPRTool,
+
+  // Jira
+  searchUserJiraTickets: searchUserJiraTicketsTool,
+  fetchJiraTicket: fetchJiraTicketTool,
+  fetchJiraEpic: fetchJiraEpicTool,
+  getExistingJiraTicket: getExistingJiraTicketTool,
+
+  // Extraction
+  extractJiraKey: extractJiraKeyTool,
+  extractLinks: extractLinksTool,
+  extractComponents: extractComponentsTool,
+  parsePRTitle: parsePRTitleTool,
+
+  // Storage
+  saveGitHubPR: saveGitHubPRTool,
+  saveJiraTicket: saveJiraTicketTool,
+  saveEvidence: saveEvidenceTool,
+  linkPRToJira: linkPRToJiraTool,
+  saveCriteriaMatches: saveCriteriaMatchesTool,
+  updateEvidence: updateEvidenceTool,
+
+  // Analysis
+  summarize: summarizeTool,
+  categorize: categorizeTool,
+  estimateScope: estimateScopeTool,
+  matchCriteria: matchCriteriaTool,
+};
+
+export type SyncTools = typeof syncTools;
+

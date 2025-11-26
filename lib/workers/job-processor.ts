@@ -1,11 +1,10 @@
 import { prisma } from '../db/prisma';
-import { processGitHubSyncJob } from './github-sync';
-import { processJiraSyncJob } from './jira-sync';
-import { processReportGenerationJob } from './report-generation';
 import { processGoogleDriveSyncJob } from './google-drive-sync';
-import { processGoalProgressJob } from './goals-progress';
 import { processReviewAnalysisJob } from './review-analysis';
-import { processGoalGenerationJob } from './goals-generation';
+import { processAgentGitHubSync, processAgentJiraSync } from './agent-sync';
+
+// Legacy job types - these are deprecated, use AGENT_* types instead
+const LEGACY_JOB_ERROR = 'This job type is deprecated. Please use AGENT_GITHUB_SYNC or AGENT_JIRA_SYNC instead.';
 
 /**
  * Job processor that routes jobs to appropriate handlers based on type
@@ -53,47 +52,30 @@ export async function processPendingJobs(): Promise<ProcessJobsResult> {
         // Route to appropriate handler based on job type
         switch (job.type) {
           case 'GITHUB_SYNC':
-            await processGitHubSyncJob(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
           case 'JIRA_SYNC':
-            await processJiraSyncJob(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
           case 'REPORT_GENERATION':
-            await processReportGenerationJob(job.id);
-            result.processed++;
+          case 'GOAL_PROGRESS':
+          case 'GOAL_GENERATION':
+            // Legacy job types - mark as failed with deprecation message
+            await prisma.job.update({
+              where: { id: job.id },
+              data: {
+                status: 'FAILED',
+                error: LEGACY_JOB_ERROR,
+                completedAt: new Date(),
+              },
+            });
+            result.failed++;
             result.jobs.push({
               id: job.id,
               type: job.type,
-              status: 'COMPLETED',
+              status: 'FAILED',
+              error: LEGACY_JOB_ERROR,
             });
             break;
 
           case 'GOOGLE_DRIVE_SYNC':
             await processGoogleDriveSyncJob(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
-          case 'GOAL_PROGRESS':
-            await processGoalProgressJob(job.id);
             result.processed++;
             result.jobs.push({
               id: job.id,
@@ -112,16 +94,6 @@ export async function processPendingJobs(): Promise<ProcessJobsResult> {
             });
             break;
 
-          case 'GOAL_GENERATION':
-            await processGoalGenerationJob(job.id);
-            result.processed++;
-            result.jobs.push({
-              id: job.id,
-              type: job.type,
-              status: 'COMPLETED',
-            });
-            break;
-
           case 'AI_ANALYSIS':
             // TODO: Implement AI analysis worker
             console.warn(`AI analysis worker not yet implemented`);
@@ -130,6 +102,26 @@ export async function processPendingJobs(): Promise<ProcessJobsResult> {
               type: job.type,
               status: 'PENDING',
               error: 'Worker not yet implemented',
+            });
+            break;
+
+          case 'AGENT_GITHUB_SYNC':
+            await processAgentGitHubSync(job.id);
+            result.processed++;
+            result.jobs.push({
+              id: job.id,
+              type: job.type,
+              status: 'COMPLETED',
+            });
+            break;
+
+          case 'AGENT_JIRA_SYNC':
+            await processAgentJiraSync(job.id);
+            result.processed++;
+            result.jobs.push({
+              id: job.id,
+              type: job.type,
+              status: 'COMPLETED',
             });
             break;
 
@@ -210,35 +202,30 @@ export async function processJobById(jobId: string): Promise<void> {
   // Route to appropriate handler
   switch (job.type) {
     case 'GITHUB_SYNC':
-      await processGitHubSyncJob(job.id);
-      break;
-
     case 'JIRA_SYNC':
-      await processJiraSyncJob(job.id);
-      break;
-
     case 'REPORT_GENERATION':
-      await processReportGenerationJob(job.id);
-      break;
+    case 'GOAL_PROGRESS':
+    case 'GOAL_GENERATION':
+      throw new Error(LEGACY_JOB_ERROR);
 
     case 'GOOGLE_DRIVE_SYNC':
       await processGoogleDriveSyncJob(job.id);
-      break;
-
-    case 'GOAL_PROGRESS':
-      await processGoalProgressJob(job.id);
       break;
 
     case 'REVIEW_ANALYSIS':
       await processReviewAnalysisJob(job.id);
       break;
 
-    case 'GOAL_GENERATION':
-      await processGoalGenerationJob(job.id);
-      break;
-
     case 'AI_ANALYSIS':
       throw new Error('AI analysis worker not yet implemented');
+
+    case 'AGENT_GITHUB_SYNC':
+      await processAgentGitHubSync(job.id);
+      break;
+
+    case 'AGENT_JIRA_SYNC':
+      await processAgentJiraSync(job.id);
+      break;
 
     default:
       await prisma.job.update({

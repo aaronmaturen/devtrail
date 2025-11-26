@@ -119,10 +119,10 @@ export async function analyzeComponents(filterOptions?: FilterOptions): Promise<
   using_pr_counts: boolean;
   note?: string;
 }> {
-  // Build where clause for Prisma query
+  // Build where clause for Evidence with GithubPR
   const where: any = {
-    type: 'PR',
-    prNumber: { not: null },
+    type: { in: ['PR_AUTHORED', 'PR_REVIEWED', 'GITHUB_PR', 'GITHUB_ISSUE'] },
+    githubPrId: { not: null },
   };
 
   // Filter by date range
@@ -132,75 +132,77 @@ export async function analyzeComponents(filterOptions?: FilterOptions): Promise<
   const dateFrom = filterOptions?.dateFrom ? new Date(filterOptions.dateFrom) : defaultDateFrom;
   const dateTo = filterOptions?.dateTo ? new Date(filterOptions.dateTo) : new Date();
 
-  where.mergedAt = {
+  where.occurredAt = {
     gte: dateFrom,
     lte: dateTo,
   };
 
-  // Filter by repositories
+  // Filter by repositories - need to filter on the related GithubPR
   if (filterOptions?.repositories && filterOptions.repositories.length > 0) {
-    where.repository = { in: filterOptions.repositories };
+    where.githubPr = {
+      repo: { in: filterOptions.repositories },
+    };
   }
 
-  // Fetch PR evidence from database
-  const prs = await prisma.evidenceEntry.findMany({
+  // Fetch Evidence entries with GithubPR data
+  const evidenceEntries = await prisma.evidence.findMany({
     where,
-    select: {
-      prNumber: true,
-      title: true,
-      repository: true,
-      mergedAt: true,
-      createdAt: true,
-      additions: true,
-      deletions: true,
-      changedFiles: true,
-      components: true,
-      content: true, // Contains JSON data including jira_key, jira_type, etc.
+    include: {
+      githubPr: true,
+      jiraTicket: true,
     },
     orderBy: {
-      mergedAt: 'desc',
+      occurredAt: 'desc',
     },
   });
 
   // Check if we have GitHub stats data
-  const hasStatsData = prs.some(pr => (pr.additions || 0) > 0 || (pr.deletions || 0) > 0);
+  const hasStatsData = evidenceEntries.some(e =>
+    e.githubPr && ((e.githubPr.additions || 0) > 0 || (e.githubPr.deletions || 0) > 0)
+  );
   const usingPRCounts = !hasStatsData;
 
   // Analyze components
   const componentData: Record<string, ComponentData> = {};
 
-  prs.forEach(pr => {
-    if (!pr.mergedAt || !pr.components) return;
+  evidenceEntries.forEach(evidence => {
+    const pr = evidence.githubPr;
+    if (!pr || !pr.mergedAt || !pr.components) return;
 
     // Parse components (stored as JSON string or array)
+    // Can be either array of strings ["comp1", "comp2"] or objects [{name: "comp1"}, ...]
     let components: Array<{ name: string; count?: number; depth?: number; path?: string }> = [];
     try {
+      let parsed: any;
       if (typeof pr.components === 'string') {
-        components = JSON.parse(pr.components);
+        parsed = JSON.parse(pr.components);
       } else {
-        components = pr.components as any;
+        parsed = pr.components;
       }
+
+      if (!Array.isArray(parsed)) return;
+
+      // Normalize to objects with name property
+      components = parsed.map((c: any) => {
+        if (typeof c === 'string') {
+          return { name: c };
+        }
+        return c;
+      });
     } catch (error) {
       console.error('Error parsing components:', error);
       return;
     }
 
-    if (!Array.isArray(components)) return;
-
-    // Parse content for Jira info and other data
-    let contentData: any = {};
-    try {
-      if (pr.content) {
-        contentData = typeof pr.content === 'string' ? JSON.parse(pr.content) : pr.content;
-      }
-    } catch (error) {
-      console.error('Error parsing content:', error);
-    }
+    if (!Array.isArray(components) || components.length === 0) return;
 
     // Calculate PR duration in days
     const durationDays = pr.createdAt && pr.mergedAt
       ? (pr.mergedAt.getTime() - pr.createdAt.getTime()) / (1000 * 60 * 60 * 24)
       : 0;
+
+    // Get linked Jira info
+    const jiraTicket = evidence.jiraTicket;
 
     components.forEach(component => {
       const componentName = component.name;
@@ -240,22 +242,22 @@ export async function analyzeComponents(filterOptions?: FilterOptions): Promise<
       const compData = componentData[componentName];
       compData.pr_count++;
 
-      if (pr.repository && !compData.repos.includes(pr.repository)) {
-        compData.repos.push(pr.repository);
+      if (pr.repo && !compData.repos.includes(pr.repo)) {
+        compData.repos.push(pr.repo);
       }
 
-      if (pr.prNumber) compData.pr_numbers.push(pr.prNumber);
+      if (pr.number) compData.pr_numbers.push(pr.number);
       if (pr.title) compData.pr_titles.push(pr.title);
 
       if (component.path && !compData.paths.includes(component.path)) {
         compData.paths.push(component.path);
       }
 
-      if (contentData.jira_key && !compData.jira_keys.includes(contentData.jira_key)) {
-        compData.jira_keys.push(contentData.jira_key);
+      if (jiraTicket?.key && !compData.jira_keys.includes(jiraTicket.key)) {
+        compData.jira_keys.push(jiraTicket.key);
       }
-      if (contentData.jira_type && !compData.jira_types.includes(contentData.jira_type)) {
-        compData.jira_types.push(contentData.jira_type);
+      if (jiraTicket?.issueType && !compData.jira_types.includes(jiraTicket.issueType)) {
+        compData.jira_types.push(jiraTicket.issueType);
       }
 
       compData.additions += pr.additions || 0;
@@ -264,10 +266,10 @@ export async function analyzeComponents(filterOptions?: FilterOptions): Promise<
 
       compData.total_duration += durationDays;
 
-      if (pr.mergedAt < compData.first_contribution) {
+      if (pr.mergedAt && pr.mergedAt < compData.first_contribution) {
         compData.first_contribution = pr.mergedAt;
       }
-      if (pr.mergedAt > compData.last_contribution) {
+      if (pr.mergedAt && pr.mergedAt > compData.last_contribution) {
         compData.last_contribution = pr.mergedAt;
       }
     });
@@ -303,36 +305,33 @@ export async function analyzeComponents(filterOptions?: FilterOptions): Promise<
 export async function getTimeSeriesData(filterOptions?: FilterOptions) {
   // Build where clause
   const where: any = {
-    type: 'PR',
-    prNumber: { not: null },
-    mergedAt: { not: null },
+    type: { in: ['PR_AUTHORED', 'PR_REVIEWED', 'GITHUB_PR', 'GITHUB_ISSUE'] },
+    githubPrId: { not: null },
   };
 
   if (filterOptions?.dateFrom) {
-    where.mergedAt = { ...where.mergedAt, gte: new Date(filterOptions.dateFrom) };
+    where.occurredAt = { ...where.occurredAt, gte: new Date(filterOptions.dateFrom) };
   }
   if (filterOptions?.dateTo) {
-    where.mergedAt = { ...where.mergedAt, lte: new Date(filterOptions.dateTo) };
+    where.occurredAt = { ...where.occurredAt, lte: new Date(filterOptions.dateTo) };
   }
   if (filterOptions?.repositories && filterOptions.repositories.length > 0) {
-    where.repository = { in: filterOptions.repositories };
+    where.githubPr = { repo: { in: filterOptions.repositories } };
   }
 
-  const prs = await prisma.evidenceEntry.findMany({
+  const evidenceEntries = await prisma.evidence.findMany({
     where,
-    select: {
-      mergedAt: true,
-      additions: true,
-      deletions: true,
-      components: true,
+    include: {
+      githubPr: true,
     },
   });
 
   // Group by month
   const monthlyData: Record<string, Record<string, { pr_count: number; total_changes: number }>> = {};
 
-  prs.forEach(pr => {
-    if (!pr.mergedAt || !pr.components) return;
+  evidenceEntries.forEach(evidence => {
+    const pr = evidence.githubPr;
+    if (!pr || !pr.mergedAt || !pr.components) return;
 
     const monthKey = `${pr.mergedAt.getFullYear()}-${String(pr.mergedAt.getMonth() + 1).padStart(2, '0')}`;
 
@@ -342,16 +341,27 @@ export async function getTimeSeriesData(filterOptions?: FilterOptions) {
 
     let components: Array<{ name: string }> = [];
     try {
+      let parsed: any;
       if (typeof pr.components === 'string') {
-        components = JSON.parse(pr.components);
+        parsed = JSON.parse(pr.components);
       } else {
-        components = pr.components as any;
+        parsed = pr.components;
       }
+
+      if (!Array.isArray(parsed)) return;
+
+      // Normalize to objects with name property
+      components = parsed.map((c: any) => {
+        if (typeof c === 'string') {
+          return { name: c };
+        }
+        return c;
+      });
     } catch (error) {
       return;
     }
 
-    if (!Array.isArray(components)) return;
+    if (!Array.isArray(components) || components.length === 0) return;
 
     components.forEach(component => {
       const componentName = component.name;
@@ -375,51 +385,46 @@ export async function getTimeSeriesData(filterOptions?: FilterOptions) {
 }
 
 export async function getRepositories() {
-  const repos = await prisma.evidenceEntry.groupBy({
-    by: ['repository'],
+  // Get all GithubPRs grouped by repo
+  const prs = await prisma.gitHubPR.findMany({
     where: {
-      type: 'PR',
-      prNumber: { not: null },
-      repository: { not: null },
+      mergedAt: { not: null },
     },
-    _count: {
-      id: true,
+    select: {
+      repo: true,
+      mergedAt: true,
     },
   });
 
-  return Promise.all(
-    repos.map(async (repo) => {
-      if (!repo.repository) return null;
+  // Group by repository
+  const repoData: Record<string, { count: number; latestActivity: Date | null }> = {};
 
-      const latestPR = await prisma.evidenceEntry.findFirst({
-        where: {
-          repository: repo.repository,
-          type: 'PR',
-        },
-        orderBy: {
-          mergedAt: 'desc',
-        },
-        select: {
-          mergedAt: true,
-        },
-      });
+  prs.forEach(pr => {
+    if (!pr.repo) return;
 
-      return {
-        name: repo.repository,
-        total_prs: repo._count.id,
-        active_prs: repo._count.id, // All are active since we're querying from DB
-        latest_activity: latestPR?.mergedAt?.toISOString() || null,
-      };
-    })
-  ).then(repos => repos.filter(r => r !== null));
+    if (!repoData[pr.repo]) {
+      repoData[pr.repo] = { count: 0, latestActivity: null };
+    }
+
+    repoData[pr.repo].count++;
+
+    if (pr.mergedAt && (!repoData[pr.repo].latestActivity || pr.mergedAt > repoData[pr.repo].latestActivity!)) {
+      repoData[pr.repo].latestActivity = pr.mergedAt;
+    }
+  });
+
+  return Object.entries(repoData).map(([name, data]) => ({
+    name,
+    total_prs: data.count,
+    active_prs: data.count,
+    latest_activity: data.latestActivity?.toISOString() || null,
+  }));
 }
 
 export async function getComponentsList() {
-  const prs = await prisma.evidenceEntry.findMany({
+  const prs = await prisma.gitHubPR.findMany({
     where: {
-      type: 'PR',
-      prNumber: { not: null },
-      components: { not: null },
+      components: { not: '' },
     },
     select: {
       components: true,
@@ -433,16 +438,27 @@ export async function getComponentsList() {
 
     let components: Array<{ name: string }> = [];
     try {
+      let parsed: any;
       if (typeof pr.components === 'string') {
-        components = JSON.parse(pr.components);
+        parsed = JSON.parse(pr.components);
       } else {
-        components = pr.components as any;
+        parsed = pr.components;
       }
+
+      if (!Array.isArray(parsed)) return;
+
+      // Normalize to objects with name property
+      components = parsed.map((c: any) => {
+        if (typeof c === 'string') {
+          return { name: c };
+        }
+        return c;
+      });
     } catch (error) {
       return;
     }
 
-    if (!Array.isArray(components)) return;
+    if (!Array.isArray(components) || components.length === 0) return;
 
     components.forEach(component => {
       componentsSet.add(component.name);

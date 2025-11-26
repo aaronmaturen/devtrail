@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { triggerJobProcessing } from '@/lib/workers/process-helper';
-import { GoalProgressJobConfig } from '@/lib/workers/goals-progress';
+
+// Job config type (inlined since goals-progress was moved to legacy)
+interface GoalProgressJobConfig {
+  goalId: string;
+  evidenceIds?: string[];
+  autoMatchEvidence?: boolean;
+}
 
 /**
  * POST /api/goals/[id]/track-progress
  * Create a GOAL_PROGRESS job to track progress against a goal
+ *
+ * NOTE: GOAL_PROGRESS jobs are deprecated. This endpoint still creates
+ * jobs for tracking purposes but they will not be processed automatically.
  *
  * Body:
  * - evidenceIds?: string[] - Optional: specific evidence to match against
@@ -38,7 +46,7 @@ export async function POST(
       autoMatchEvidence: body.autoMatchEvidence !== false, // Default to true
     };
 
-    // Create job
+    // Create job - note that GOAL_PROGRESS is deprecated
     const job = await prisma.job.create({
       data: {
         type: 'GOAL_PROGRESS',
@@ -47,13 +55,11 @@ export async function POST(
       },
     });
 
-    // Trigger processing (immediate in dev, queued in production)
-    await triggerJobProcessing(job.id, 'GOAL_PROGRESS');
-
     return NextResponse.json({
       jobId: job.id,
       status: job.status,
-      message: 'Goal progress tracking job created',
+      message: 'Goal progress tracking job created (note: this job type is deprecated)',
+      warning: 'GOAL_PROGRESS jobs are deprecated and will not be processed automatically',
     });
   } catch (error) {
     console.error('Error creating goal progress job:', error);

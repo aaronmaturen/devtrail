@@ -1,8 +1,6 @@
-import { anthropic } from '@ai-sdk/anthropic';
 import { devtrailTools } from '@/lib/ai/tools';
 
 export const goalGeneratorAgent = {
-  model: anthropic('claude-3-5-sonnet-20241022'),
   system: `You are a Goal Generator AI for DevTrail, specializing in creating SMART (Specific, Measurable, Achievable, Relevant, Time-bound) career goals for software engineers.
 
 Your role is to:

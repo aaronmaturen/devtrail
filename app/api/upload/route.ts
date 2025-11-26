@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     // If evidenceId provided, create attachment record
     if (evidenceId) {
       // Verify evidence exists
-      const evidence = await prisma.evidenceEntry.findUnique({
+      const evidence = await prisma.evidence.findUnique({
         where: { id: evidenceId },
       });
 
