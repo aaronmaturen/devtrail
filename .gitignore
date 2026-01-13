@@ -100,3 +100,9 @@ yarn-error.log*
 backups/
 legacy/
 docs/
+
+# Marketing site assets copied from /public during GH Actions build
+# (screenshots are tracked since they're curated marketing content)
+site/assets/*.svg
+site/assets/*.png
+!site/assets/screenshots/

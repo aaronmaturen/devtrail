@@ -1,0 +1,874 @@
+/* ==========================================================================
+   DevTrail Marketing Site - 70s National Park Aesthetic
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   CSS Custom Properties (Design Tokens)
+   -------------------------------------------------------------------------- */
+:root {
+    /* Brand Colors */
+    --brand-green: #50b673;
+    --brand-green-light: #71c38d;
+    --brand-green-dark: #257c46;
+
+    /* Earth Tones - 70s National Park Palette */
+    --bark-lightest: #faf6f1;
+    --bark-light: #f8f4f0;
+    --bark-medium: #d4c4b0;
+    --bark-dark: #684726;
+    --moss: #446139;
+    --forest: #2f5a2f;
+    --forest-dark: #1a3a1a;
+
+    /* Accent Colors - Sunset warmth */
+    --sunset-orange: #e07b4c;
+    --sunset-yellow: #f4c04e;
+    --cream: #fffdf8;
+
+    /* Typography */
+    --font-display: 'Bahnschrift', 'DIN Alternate', 'Franklin Gothic Medium',
+                    'Arial Narrow', sans-serif-condensed, sans-serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                 'Helvetica Neue', Arial, sans-serif;
+
+    /* Spacing Scale */
+    --space-xs: 0.5rem;
+    --space-sm: 1rem;
+    --space-md: 2rem;
+    --space-lg: 4rem;
+    --space-xl: 6rem;
+
+    /* Border Radius - Minimal for vintage feel */
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --radius-lg: 8px;
+
+    /* Shadows */
+    --shadow-hard: 4px 4px 0;
+    --shadow-hard-lg: 6px 6px 0;
+}
+
+/* --------------------------------------------------------------------------
+   Base Styles
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 1.125rem;
+    line-height: 1.6;
+    color: var(--bark-dark);
+    background: var(--bark-lightest);
+    -webkit-font-smoothing: antialiased;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+a {
+    color: var(--brand-green-dark);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: var(--brand-green);
+}
+
+/* --------------------------------------------------------------------------
+   Typography - Bold, Condensed, Vintage Poster Style
+   -------------------------------------------------------------------------- */
+h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 var(--space-sm);
+}
+
+.section-title {
+    font-size: clamp(2rem, 5vw, 3rem);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: center;
+    color: var(--bark-dark);
+    position: relative;
+    padding-bottom: var(--space-sm);
+}
+
+.section-title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 4px;
+    background: var(--brand-green);
+}
+
+/* --------------------------------------------------------------------------
+   Buttons - Vintage Poster Style with Hard Shadows
+   -------------------------------------------------------------------------- */
+.btn {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 0.875rem 1.75rem;
+    border: 3px solid;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-primary {
+    background: var(--brand-green);
+    color: white;
+    border-color: var(--brand-green-dark);
+    box-shadow: var(--shadow-hard) var(--bark-dark);
+}
+
+.btn-primary:hover {
+    background: var(--brand-green-light);
+    color: white;
+    transform: translate(-2px, -2px);
+    box-shadow: var(--shadow-hard-lg) var(--bark-dark);
+}
+
+.btn-primary:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 var(--bark-dark);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--bark-dark);
+    border-color: var(--bark-dark);
+}
+
+.btn-secondary:hover {
+    background: var(--bark-dark);
+    color: var(--bark-light);
+}
+
+.btn-large {
+    font-size: 1.125rem;
+    padding: 1.125rem 2.25rem;
+}
+
+/* --------------------------------------------------------------------------
+   Header
+   -------------------------------------------------------------------------- */
+.site-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--bark-light);
+    border-bottom: 3px solid var(--bark-medium);
+}
+
+.nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-sm) var(--space-md);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo-link {
+    display: flex;
+    align-items: center;
+}
+
+.wordmark {
+    height: 32px;
+    width: auto;
+}
+
+.nav-cta {
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--bark-dark);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--bark-dark);
+    transition: all 0.15s ease;
+}
+
+.nav-cta:hover {
+    background: var(--bark-dark);
+    color: var(--bark-light);
+}
+
+.github-icon {
+    flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Hero Section
+   -------------------------------------------------------------------------- */
+.hero {
+    position: relative;
+    min-height: 100vh;
+    padding: calc(80px + var(--space-lg)) var(--space-md) var(--space-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(
+        180deg,
+        var(--bark-light) 0%,
+        var(--bark-lightest) 100%
+    );
+    overflow: hidden;
+}
+
+/* Topography pattern background */
+.hero-bg-pattern {
+    position: absolute;
+    inset: 0;
+    background-image: url('../assets/topography.svg');
+    background-size: 800px 800px;
+    background-position: center;
+    opacity: 0.06;
+    pointer-events: none;
+}
+
+/* Noise texture overlay for vintage paper feel */
+.hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.025;
+    pointer-events: none;
+}
+
+.hero-inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: var(--space-xl);
+    max-width: 1200px;
+    width: 100%;
+}
+
+.hero-content {
+    text-align: left;
+}
+
+.hero-title {
+    font-size: clamp(2.5rem, 6vw, 5rem);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bark-dark);
+    text-shadow: 4px 4px 0 var(--brand-green);
+    margin-bottom: var(--space-sm);
+}
+
+.hero-subtitle {
+    font-size: clamp(1.125rem, 2vw, 1.375rem);
+    color: var(--moss);
+    margin-bottom: var(--space-md);
+    line-height: 1.5;
+}
+
+.hero-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.hero-image {
+    position: relative;
+    z-index: 1;
+    border: 4px solid var(--bark-dark);
+    box-shadow: 8px 8px 0 var(--forest);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(248, 244, 240, 0.92);
+    padding: var(--space-sm);
+}
+
+.hero-image img {
+    display: block;
+    border-radius: var(--radius-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Features Section
+   -------------------------------------------------------------------------- */
+.features {
+    background: var(--forest);
+    padding: var(--space-xl) var(--space-md);
+    position: relative;
+}
+
+.features .section-title {
+    color: var(--bark-light);
+}
+
+.features .section-title::after {
+    background: var(--sunset-yellow);
+}
+
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+    max-width: 1100px;
+    margin: var(--space-lg) auto 0;
+}
+
+.feature-card {
+    background: var(--bark-light);
+    padding: var(--space-md);
+    border: 3px solid var(--bark-dark);
+    text-align: center;
+    position: relative;
+    transition: transform 0.2s ease;
+}
+
+/* Corner accents - vintage poster detail */
+.feature-card::before,
+.feature-card::after {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--brand-green);
+    pointer-events: none;
+}
+
+.feature-card::before {
+    top: -3px;
+    left: -3px;
+    border-right: none;
+    border-bottom: none;
+}
+
+.feature-card::after {
+    bottom: -3px;
+    right: -3px;
+    border-left: none;
+    border-top: none;
+}
+
+.feature-card:hover {
+    transform: translateY(-4px);
+}
+
+.feature-icon {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto var(--space-sm);
+    background: var(--brand-green);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    border: 3px solid var(--brand-green-dark);
+}
+
+.feature-card h3 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--bark-dark);
+    margin-bottom: var(--space-xs);
+}
+
+.feature-card p {
+    font-size: 1rem;
+    color: var(--moss);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   How It Works Section - Trail Markers
+   -------------------------------------------------------------------------- */
+.how-it-works {
+    background: var(--bark-lightest);
+    padding: var(--space-xl) var(--space-md);
+}
+
+.steps {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-lg);
+    max-width: 1000px;
+    margin: var(--space-lg) auto 0;
+    position: relative;
+}
+
+/* Connecting trail line */
+.steps::before {
+    content: '';
+    position: absolute;
+    top: 48px;
+    left: 15%;
+    right: 15%;
+    height: 4px;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--bark-medium) 0,
+        var(--bark-medium) 12px,
+        transparent 12px,
+        transparent 24px
+    );
+    z-index: 0;
+}
+
+.step {
+    text-align: center;
+    position: relative;
+    z-index: 1;
+    flex: 0 0 180px;
+}
+
+.step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 96px;
+    height: 96px;
+    margin: 0 auto var(--space-sm);
+    background: var(--brand-green);
+    border: 4px solid var(--brand-green-dark);
+    border-radius: 50%;
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: white;
+    box-shadow: 4px 4px 0 var(--bark-dark);
+}
+
+.step h3 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--bark-dark);
+    margin-bottom: var(--space-xs);
+}
+
+.step p {
+    font-size: 0.9375rem;
+    color: var(--moss);
+    margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Showcase Section
+   -------------------------------------------------------------------------- */
+.showcase {
+    background: var(--bark-lightest);
+    padding: var(--space-xl) var(--space-md);
+}
+
+.showcase .section-title {
+    margin-bottom: var(--space-sm);
+}
+
+.showcase-intro {
+    text-align: center;
+    font-size: 1.25rem;
+    color: var(--moss);
+    max-width: 700px;
+    margin: 0 auto var(--space-xl);
+}
+
+.showcase-item {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: var(--space-lg);
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto var(--space-xl);
+    padding-bottom: var(--space-xl);
+    border-bottom: 2px dashed var(--bark-medium);
+}
+
+.showcase-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.showcase-item-reverse {
+    grid-template-columns: 1.4fr 1fr;
+}
+
+.showcase-item-reverse .showcase-content {
+    order: 2;
+}
+
+.showcase-item-reverse .showcase-image {
+    order: 1;
+}
+
+.showcase-content h3 {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--bark-dark);
+    margin-bottom: var(--space-sm);
+    position: relative;
+    padding-left: var(--space-md);
+}
+
+.showcase-content h3::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--brand-green);
+}
+
+.showcase-content p {
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    color: var(--moss);
+    margin: 0;
+}
+
+.showcase-image {
+    position: relative;
+}
+
+.showcase-image img {
+    width: 100%;
+    height: auto;
+    border: 3px solid var(--bark-dark);
+    border-radius: var(--radius-md);
+    box-shadow: 6px 6px 0 var(--forest);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.showcase-image img:hover {
+    transform: translate(-3px, -3px);
+    box-shadow: 9px 9px 0 var(--forest);
+}
+
+/* Alternating background accents */
+.showcase-item:nth-child(odd) .showcase-image::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    bottom: 10px;
+    left: 10px;
+    background: var(--bark-medium);
+    border-radius: var(--radius-md);
+    z-index: -1;
+}
+
+.showcase-item:nth-child(even) .showcase-image::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    bottom: 10px;
+    right: 10px;
+    background: var(--bark-medium);
+    border-radius: var(--radius-md);
+    z-index: -1;
+}
+
+/* --------------------------------------------------------------------------
+   CTA Section
+   -------------------------------------------------------------------------- */
+.cta-section {
+    background: linear-gradient(
+        180deg,
+        var(--bark-light) 0%,
+        var(--bark-medium) 100%
+    );
+    padding: var(--space-xl) var(--space-md);
+    text-align: center;
+    position: relative;
+}
+
+.cta-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url('../assets/topography.svg');
+    background-size: 600px 600px;
+    background-position: center;
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.cta-section::after {
+    content: '';
+    position: absolute;
+    inset: var(--space-lg);
+    background: rgba(250, 246, 241, 0.88);
+    border: 3px solid var(--bark-dark);
+    border-radius: var(--radius-md);
+    z-index: 0;
+}
+
+.cta-section > * {
+    position: relative;
+    z-index: 1;
+}
+
+.cta-section h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--bark-dark);
+    margin-bottom: var(--space-xs);
+}
+
+.cta-section p {
+    font-size: 1.125rem;
+    color: var(--moss);
+    margin-bottom: var(--space-md);
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+.site-footer {
+    background: var(--forest-dark);
+    padding: var(--space-lg) var(--space-md);
+    text-align: center;
+}
+
+.footer-content {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.footer-wordmark {
+    height: 28px;
+    width: auto;
+    margin: 0 auto var(--space-sm);
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
+}
+
+.site-footer p {
+    color: var(--bark-medium);
+    font-size: 0.9375rem;
+    margin: 0 0 var(--space-xs);
+    line-height: 1.6;
+}
+
+.copyright {
+    font-family: var(--font-display);
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--bark-medium);
+    opacity: 0.7;
+    margin-top: var(--space-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Animations
+   -------------------------------------------------------------------------- */
+.feature-card,
+.step {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.feature-card.animate-in,
+.step.animate-in {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Stagger animation for grid items */
+.feature-card:nth-child(1) { transition-delay: 0s; }
+.feature-card:nth-child(2) { transition-delay: 0.1s; }
+.feature-card:nth-child(3) { transition-delay: 0.2s; }
+.feature-card:nth-child(4) { transition-delay: 0.3s; }
+.feature-card:nth-child(5) { transition-delay: 0.4s; }
+.feature-card:nth-child(6) { transition-delay: 0.5s; }
+
+.step:nth-child(1) { transition-delay: 0s; }
+.step:nth-child(2) { transition-delay: 0.15s; }
+.step:nth-child(3) { transition-delay: 0.3s; }
+.step:nth-child(4) { transition-delay: 0.45s; }
+
+/* --------------------------------------------------------------------------
+   Responsive Design
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+    .hero-inner {
+        grid-template-columns: 1fr;
+        gap: var(--space-lg);
+        text-align: center;
+    }
+
+    .hero-content {
+        text-align: center;
+        order: 1;
+    }
+
+    .hero-image {
+        order: 0;
+        max-width: 400px;
+        margin: 0 auto;
+    }
+
+    .hero-ctas {
+        justify-content: center;
+    }
+
+    .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .showcase-item,
+    .showcase-item-reverse {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+        text-align: center;
+    }
+
+    .showcase-item-reverse .showcase-content,
+    .showcase-item-reverse .showcase-image {
+        order: unset;
+    }
+
+    .showcase-content h3 {
+        padding-left: 0;
+    }
+
+    .showcase-content h3::before {
+        display: none;
+    }
+
+    .showcase-image img {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+
+    .showcase-item:nth-child(odd) .showcase-image::before,
+    .showcase-item:nth-child(even) .showcase-image::before {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .hero {
+        padding-top: calc(70px + var(--space-md));
+        min-height: auto;
+    }
+
+    .hero-title {
+        text-shadow: 3px 3px 0 var(--brand-green);
+    }
+
+    .hero-image {
+        box-shadow: 6px 6px 0 var(--forest);
+    }
+
+    .steps::before {
+        display: none;
+    }
+
+    .steps {
+        gap: var(--space-md);
+    }
+
+    .step {
+        flex: 0 0 140px;
+    }
+
+    .step-number {
+        width: 72px;
+        height: 72px;
+        font-size: 2rem;
+    }
+
+    .nav-cta span {
+        display: none;
+    }
+
+    .nav-cta {
+        padding: 0.5rem;
+        border: none;
+    }
+
+    .feature-card,
+    .step {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-ctas {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .btn {
+        justify-content: center;
+    }
+
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Print Styles
+   -------------------------------------------------------------------------- */
+@media print {
+    .site-header,
+    .hero-bg-pattern,
+    .hero::after {
+        display: none;
+    }
+
+    .hero {
+        min-height: auto;
+        padding: var(--space-md);
+    }
+
+    body {
+        font-size: 12pt;
+    }
+}
