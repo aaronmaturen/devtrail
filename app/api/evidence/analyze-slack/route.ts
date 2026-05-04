@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Anthropic } from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/db/prisma';
 import { getAnthropicApiKey, MODEL_CONFIGS } from '@/lib/ai/config';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 import {
   encodeCriteria,
   mapCriteriaForPrompt,
@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Anthropic client
-    const anthropic = new Anthropic({ apiKey });
+    // Initialize Anthropic-compatible client
+    const anthropic = createAnthropicClient(apiKey);
 
     // Load criteria from database
     const criteria = await prisma.criterion.findMany({
@@ -88,7 +88,7 @@ Focus on identifying concrete achievements, problem-solving, collaboration, lead
 
     // Call Anthropic API
     const completion = await anthropic.messages.create({
-      model: MODEL_CONFIGS.FAST.model,
+      model: resolveModelId(MODEL_CONFIGS.FAST.model),
       max_tokens: 2000,
       temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],

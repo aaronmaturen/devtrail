@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import Anthropic from '@anthropic-ai/sdk';
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
+import { createAnthropicClient, resolveModelId, type AnthropicLikeClient } from '@/lib/ai/client';
 import {
   encodeEvidence,
   encodeGoals,
@@ -37,7 +37,7 @@ export async function processJob(jobId: string) {
 
     // Get API key from centralized config
     const apiKey = await getAnthropicApiKey();
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient(apiKey);
 
     // Build context based on job type
     let result;
@@ -81,7 +81,7 @@ export async function processJob(jobId: string) {
 /**
  * Process a GENERATE job - create new AI content for a block
  */
-async function processGenerateJob(job: any, anthropic: Anthropic) {
+async function processGenerateJob(job: any, anthropic: AnthropicLikeClient) {
   console.log(`[Job ${job.id}] Processing GENERATE job`);
 
   // Fetch block and document context
@@ -162,7 +162,7 @@ ${TOON_FORMAT_EXPLANATION}`;
 
   // Call Claude API
   const response = await anthropic.messages.create({
-    model: modelId,
+    model: resolveModelId(modelId),
     max_tokens: 2000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
@@ -213,7 +213,7 @@ ${TOON_FORMAT_EXPLANATION}`;
 /**
  * Process a REFINE job - refine existing content
  */
-async function processRefineJob(job: any, anthropic: Anthropic) {
+async function processRefineJob(job: any, anthropic: AnthropicLikeClient) {
   console.log(`[Job ${job.id}] Processing REFINE job`);
 
   const block = await prisma.reportBlock.findUnique({
@@ -234,7 +234,7 @@ Make it more concise, clear, and professional.`;
   const modelId = await getConfiguredModelId();
 
   const response = await anthropic.messages.create({
-    model: modelId,
+    model: resolveModelId(modelId),
     max_tokens: 2000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
@@ -277,7 +277,7 @@ Make it more concise, clear, and professional.`;
 /**
  * Process an ANALYZE job - analyze evidence or content
  */
-async function processAnalyzeJob(job: any, anthropic: Anthropic) {
+async function processAnalyzeJob(job: any, anthropic: AnthropicLikeClient) {
   console.log(`[Job ${job.id}] Processing ANALYZE job`);
 
   // Get document context
@@ -301,7 +301,7 @@ Provide insights, patterns, and recommendations based on the evidence.`;
   const modelId = await getConfiguredModelId();
 
   const response = await anthropic.messages.create({
-    model: modelId,
+    model: resolveModelId(modelId),
     max_tokens: 2000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],

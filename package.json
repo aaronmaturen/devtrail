@@ -25,11 +25,12 @@
     "import-data": "tsx scripts/import-existing-data.ts",
     "import-goals": "tsx scripts/import-goals.ts",
     "migrate-reports": "tsx scripts/migrate-markdown-reports.ts",
-    "update-pr-stats": "node scripts/update-pr-stats.js"
+    "update-pr-stats": "node scripts/update-pr-stats.js",
+    "aws:refresh": "./refresh-aws-creds.sh"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.45",
-    "@anthropic-ai/sdk": "^0.70.1",
+    "@ai-sdk/amazon-bedrock": "^4.0.100",
+    "@anthropic-ai/bedrock-sdk": "^0.29.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

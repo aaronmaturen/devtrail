@@ -239,7 +239,8 @@ Agents analyze evidence across 29 specific criteria organized into 5 areas:
 ## Dependencies
 
 - `ai@6.0.0-beta.85`: Vercel AI SDK v6
-- `@ai-sdk/anthropic@2.0.45`: Anthropic provider
+- `@ai-sdk/amazon-bedrock`: Bedrock provider for Vercel AI SDK
+- `@anthropic-ai/bedrock-sdk`: Direct Bedrock client for Claude (messages.create)
 - `@prisma/client`: Database access
 - `zod@4.1.12`: Schema validation
 

@@ -247,12 +247,18 @@ export async function POST(request: NextRequest) {
       repository,
       mergedAt,
       slackLink,
+      slackChannel,
+      slackAuthor,
+      occurredAt,
       additions,
       deletions,
       changedFiles,
       components,
       criteriaIds,
     } = body;
+
+    // Parse optional occurredAt (ISO string or epoch ms). Falls back to now.
+    const parsedOccurredAt = occurredAt ? new Date(occurredAt) : new Date();
 
     // Validate required fields
     if (!type || !title) {
@@ -273,7 +279,7 @@ export async function POST(request: NextRequest) {
       summary: description || title,
       category: "feature",
       scope: "medium",
-      occurredAt: new Date(),
+      occurredAt: parsedOccurredAt,
     };
 
     // For PR type, try to find or create GitHubPR
@@ -307,10 +313,10 @@ export async function POST(request: NextRequest) {
       // For Slack type, create SlackMessage
       const slackMessage = await prisma.slackMessage.create({
         data: {
-          channel: "unknown",
-          author: "unknown",
+          channel: slackChannel || "unknown",
+          author: slackAuthor || "unknown",
           content: description || title,
-          timestamp: new Date(),
+          timestamp: parsedOccurredAt,
           permalink: slackLink,
         },
       });

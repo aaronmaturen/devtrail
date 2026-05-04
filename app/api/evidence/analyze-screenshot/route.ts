@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Anthropic } from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 import { prisma } from '@/lib/db/prisma';
 import { getAnthropicApiKey, MODEL_CONFIGS } from '@/lib/ai/config';
 import {
@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     const base64Image = buffer.toString('base64');
 
-    // Initialize Anthropic client
-    const anthropic = new Anthropic({ apiKey });
+    // Initialize Anthropic-compatible client
+    const anthropic = createAnthropicClient(apiKey);
 
     // Load criteria from database
     const criteria = await prisma.criterion.findMany({
@@ -119,7 +119,7 @@ Focus on identifying concrete achievements, problem-solving, collaboration, kudo
 
     // Call Anthropic Vision API
     const completion = await anthropic.messages.create({
-      model: MODEL_CONFIGS.STANDARD.model, // Use Sonnet for better vision understanding
+      model: resolveModelId(MODEL_CONFIGS.STANDARD.model), // Use Sonnet for better vision understanding
       max_tokens: 2000,
       temperature: 0.1,
       messages: [{

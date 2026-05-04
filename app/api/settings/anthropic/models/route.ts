@@ -1,28 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Anthropic } from '@anthropic-ai/sdk';
-import { getAnthropicApiKey } from '@/lib/ai/config';
+import { getConfiguredModelId } from '@/lib/ai/config';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 
 export const runtime = 'nodejs';
 
 /**
  * GET /api/settings/anthropic/models
- * Fetches available Anthropic models using the stored API key
+ * Returns the curated list of Claude models available on Bedrock and
+ * validates AWS credentials by issuing a small test request against
+ * the user's configured model.
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get the Anthropic API key from centralized config
-    let apiKey: string;
-    try {
-      apiKey = await getAnthropicApiKey();
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Anthropic API key not configured' },
-        { status: 400 }
-      );
-    }
-
-    // Create client
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient();
 
     // Anthropic doesn't have a models list API, so we return a curated list
     const models = [
@@ -58,16 +48,25 @@ export async function GET(request: NextRequest) {
       },
     ];
 
-    // Validate the key works by making a small request
+    // Validate AWS credentials by making a small request against the
+    // user's configured model. Each Bedrock model requires explicit
+    // account-level access, so we test the actual model in use.
+    const testModelId = await getConfiguredModelId();
+
     try {
       await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: resolveModelId(testModelId),
         max_tokens: 10,
         messages: [{ role: 'user', content: 'Hi' }],
       });
     } catch (error: any) {
+      const message = error?.message || 'Unknown error';
+      console.error('[models] validation call failed:', error);
       return NextResponse.json(
-        { error: 'Invalid Anthropic API key', details: error.message },
+        {
+          error: `AWS Bedrock request failed (model: ${resolveModelId(testModelId)}): ${message}`,
+          details: message,
+        },
         { status: 401 }
       );
     }

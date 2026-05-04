@@ -10,11 +10,15 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '@/lib/db/prisma';
+import { createAnthropicClient, isBedrock, resolveModelId, type AnthropicLikeClient } from '@/lib/ai/client';
 
-// Get Anthropic client from config
-async function getAnthropicClient(): Promise<Anthropic> {
+// Get Anthropic-compatible client from config (or AWS env when Bedrock)
+async function getAnthropicClient(): Promise<AnthropicLikeClient> {
+  if (isBedrock()) {
+    return createAnthropicClient();
+  }
+
   const config = await prisma.config.findUnique({
     where: { key: 'anthropic_api_key' },
   });
@@ -24,7 +28,7 @@ async function getAnthropicClient(): Promise<Anthropic> {
   }
 
   const apiKey = JSON.parse(config.value);
-  return new Anthropic({ apiKey });
+  return createAnthropicClient(apiKey);
 }
 
 // Define parameter schemas
@@ -150,7 +154,7 @@ ${contextParts.join('\n')}
 Write ONLY the summary, nothing else. Do not include phrases like "The engineer" or "This PR" - write in a direct style as if documenting an accomplishment.`;
 
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
+        model: resolveModelId('claude-sonnet-4-5-20250929'),
         max_tokens: 256,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -455,7 +459,7 @@ Respond with JSON only:
 If no criteria match, return: {"matches": []}`;
 
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
+        model: resolveModelId('claude-sonnet-4-5-20250929'),
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
       });

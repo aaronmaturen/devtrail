@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
+
+type MessageParam = { role: 'user' | 'assistant'; content: string };
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 
 /**
@@ -91,7 +93,7 @@ You: "I'll add more quantifiable results. Here's a revised version:
 I've added specific numbers around [X, Y, Z]. Would you like me to adjust any of these figures or add different metrics?"`;
 
     // Build message history
-    const messages: Anthropic.MessageParam[] = [
+    const messages: MessageParam[] = [
       ...chatHistory.map((msg: { role: 'user' | 'assistant'; content: string }) => ({
         role: msg.role,
         content: msg.content,
@@ -103,12 +105,10 @@ I've added specific numbers around [X, Y, Z]. Would you like me to adjust any of
     const modelId = await getConfiguredModelId();
 
     // Call Claude
-    const anthropic = new Anthropic({
-      apiKey,
-    });
+    const anthropic = createAnthropicClient(apiKey);
 
     const response = await anthropic.messages.create({
-      model: modelId,
+      model: resolveModelId(modelId),
       max_tokens: 4096,
       system: systemPrompt,
       messages,

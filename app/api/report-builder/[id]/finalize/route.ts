@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 
 /**
@@ -72,9 +72,7 @@ export async function POST(
     // Get API key and model from centralized config
     const apiKey = await getAnthropicApiKey();
     const modelId = await getConfiguredModelId();
-    const anthropic = new Anthropic({
-      apiKey,
-    });
+    const anthropic = createAnthropicClient(apiKey);
 
     // Use AI to extract themes, strengths, growth areas, achievements
     const analysisPrompt = `Analyze this performance review self-assessment and extract key information. Return a JSON object with the following fields:
@@ -93,7 +91,7 @@ REVIEW CONTENT:
 ${fullContent}`;
 
     const response = await anthropic.messages.create({
-      model: modelId,
+      model: resolveModelId(modelId),
       max_tokens: 2048,
       messages: [{ role: 'user', content: analysisPrompt }],
     });

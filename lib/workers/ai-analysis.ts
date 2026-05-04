@@ -1,4 +1,4 @@
-import { Anthropic } from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId, type AnthropicLikeClient } from '@/lib/ai/client';
 import { prisma } from '../db/prisma';
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 import {
@@ -81,8 +81,8 @@ export async function processAIAnalysisJob(jobId: string): Promise<void> {
     // Update progress
     await updateJobProgress(jobId, 10, 'Initializing AI client');
 
-    // Initialize Anthropic client
-    const anthropic = new Anthropic({ apiKey });
+    // Initialize Anthropic-compatible client
+    const anthropic = createAnthropicClient(apiKey);
 
     // Get model from database configuration
     const modelId = await getConfiguredModelId();
@@ -172,7 +172,7 @@ export async function processAIAnalysisJob(jobId: string): Promise<void> {
  */
 async function analyzeEvidence(
   evidenceId: string,
-  anthropic: Anthropic,
+  anthropic: AnthropicLikeClient,
   modelId: string,
   allCriteria: any[],
   forceReanalysis: boolean
@@ -215,7 +215,7 @@ async function analyzeEvidence(
 
   // Call Claude API
   const response = await anthropic.messages.create({
-    model: modelId,
+    model: resolveModelId(modelId),
     max_tokens: 2000,
     temperature: 0.3,
     messages: [{ role: 'user', content: prompt }],

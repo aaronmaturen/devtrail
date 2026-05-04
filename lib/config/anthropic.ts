@@ -3,29 +3,12 @@ import { getConfigValue } from './utils';
 const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
 
 /**
- * Get Anthropic API key from Config table or environment
- * Priority: Database Config > Environment Variable
- * @returns Anthropic API key
- * @throws Error if API key not found in database or environment
+ * Returns an empty string. The app authenticates to Claude via AWS
+ * Bedrock now, so an Anthropic API key is no longer required. Kept
+ * for backward compatibility with call sites.
  */
 export async function getAnthropicApiKey(): Promise<string> {
-  // Try database first
-  const dbKey = await getConfigValue('anthropic_api_key');
-  if (dbKey) {
-    try {
-      return JSON.parse(dbKey);
-    } catch {
-      return dbKey;
-    }
-  }
-
-  // Fallback to environment variable
-  const envKey = process.env.ANTHROPIC_API_KEY;
-  if (envKey) {
-    return envKey;
-  }
-
-  throw new Error('Anthropic API key not configured. Set it in Settings or ANTHROPIC_API_KEY environment variable.');
+  return '';
 }
 
 /**

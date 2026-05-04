@@ -1,4 +1,4 @@
-import { Anthropic } from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 import { prisma } from '../db/prisma';
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 import { getAIContext } from '@/lib/config/user-context';
@@ -262,7 +262,7 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
 
     await updateJobProgress(jobId, 10, 'Initializing AI client');
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient(apiKey);
     const modelId = await getConfiguredModelId();
 
     await updateJobProgress(jobId, 20, 'Fetching month data and context');
@@ -298,7 +298,7 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
     // Build and send AI prompt
     const prompt = buildInsightPrompt(config.month, metrics, developerContext);
     const response = await anthropic.messages.create({
-      model: modelId,
+      model: resolveModelId(modelId),
       max_tokens: 2000,
       temperature: 0.7,
       messages: [{ role: 'user', content: prompt }],

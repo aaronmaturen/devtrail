@@ -7,10 +7,11 @@
  */
 
 import { generateText, stepCountIs } from 'ai';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { bedrock } from '@ai-sdk/amazon-bedrock';
 import { Octokit } from '@octokit/rest';
 import { prisma } from '@/lib/db/prisma';
 import { githubSyncAgent, jiraSyncAgent } from '@/lib/ai/agents';
+import { resolveModelId } from '@/lib/ai/client';
 import { JobLogger } from './utils/job-logger';
 
 /**
@@ -324,22 +325,22 @@ async function getJiraTicketCount(
 }
 
 /**
- * Get Anthropic configuration from database (API key and model)
+ * Get Bedrock configuration from database. Returns a model factory
+ * shaped like the AI SDK provider so existing call sites that do
+ * `anthropic(model)` keep working.
  */
 async function getAnthropicConfig() {
-  const [apiKeyConfig, modelConfig] = await Promise.all([
-    prisma.config.findUnique({ where: { key: 'anthropic_api_key' } }),
-    prisma.config.findUnique({ where: { key: 'anthropic_model' } }),
-  ]);
+  const modelConfig = await prisma.config.findUnique({
+    where: { key: 'anthropic_model' },
+  });
 
-  if (!apiKeyConfig?.value) {
-    throw new Error('Anthropic API key not configured. Please configure in Settings.');
-  }
+  const model = modelConfig?.value
+    ? JSON.parse(modelConfig.value)
+    : 'claude-sonnet-4-5-20250929';
 
-  const apiKey = JSON.parse(apiKeyConfig.value);
-  const model = modelConfig?.value ? JSON.parse(modelConfig.value) : 'claude-sonnet-4-5-20250929';
-
-  const anthropic = createAnthropic({ apiKey });
+  // Wrap bedrock() so callers can pass either the raw model ID or a
+  // pre-resolved Bedrock inference profile ID.
+  const anthropic = (id: string) => bedrock(resolveModelId(id));
   return { anthropic, model };
 }
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
+
+type MessageParam = { role: 'user' | 'assistant'; content: string };
 import { getCompanyFramework } from '@/lib/services/review-context';
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
 import {
@@ -66,7 +68,7 @@ export async function POST(
     const systemPrompt = buildSystemPrompt(context, contextConfig);
 
     // If refining, include current content
-    let messages: Anthropic.MessageParam[] = [];
+    let messages: MessageParam[] = [];
     if (refine && block.content) {
       messages = [
         { role: 'user', content: promptText },
@@ -81,12 +83,10 @@ export async function POST(
     const modelId = await getConfiguredModelId();
 
     // Call Claude API
-    const anthropic = new Anthropic({
-      apiKey,
-    });
+    const anthropic = createAnthropicClient(apiKey);
 
     const response = await anthropic.messages.create({
-      model: modelId,
+      model: resolveModelId(modelId),
       max_tokens: 4096,
       system: systemPrompt,
       messages,

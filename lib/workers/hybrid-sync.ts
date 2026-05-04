@@ -7,11 +7,12 @@
  */
 
 import { generateObject } from 'ai';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { bedrock } from '@ai-sdk/amazon-bedrock';
 import { z } from 'zod';
 import { Version3Client } from 'jira.js';
 import { Octokit } from '@octokit/rest';
 import { prisma } from '@/lib/db/prisma';
+import { resolveModelId } from '@/lib/ai/client';
 import { JobLogger } from './utils/job-logger';
 
 // ============================================================================
@@ -469,7 +470,8 @@ async function analyzeTicketsBatch(
 
   await logger?.info(`Analyzing batch of ${tickets.length} tickets with AI...`);
 
-  const anthropic = createAnthropic({ apiKey: anthropicApiKey });
+  // anthropicApiKey is unused on Bedrock; AWS credentials come from env.
+  const anthropic = (id: string) => bedrock(resolveModelId(id));
 
   // Build criteria reference for the prompt
   const criteriaRef = criteria
@@ -533,7 +535,8 @@ async function analyzePRsBatch(
 
   await logger?.info(`Analyzing batch of ${prs.length} PRs with AI...`);
 
-  const anthropic = createAnthropic({ apiKey: anthropicApiKey });
+  // anthropicApiKey is unused on Bedrock; AWS credentials come from env.
+  const anthropic = (id: string) => bedrock(resolveModelId(id));
 
   const criteriaRef = criteria
     .map((c) => `[${c.id}] ${c.area} > ${c.subarea}: ${c.description.slice(0, 100)}...`)

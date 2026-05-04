@@ -1,34 +1,14 @@
-import { anthropic } from '@ai-sdk/anthropic';
+import { bedrock } from '@ai-sdk/amazon-bedrock';
 import { prisma } from '../db/prisma';
+import { resolveModelId } from './client';
 
 /**
- * Get Anthropic API key from Config table or environment
- * Priority: Database Config > Environment Variable
+ * Returns an empty string. Kept for backward compatibility with call
+ * sites that still expect to receive an "API key". On Bedrock we
+ * authenticate via AWS credentials, not an Anthropic API key.
  */
 export async function getAnthropicApiKey(): Promise<string> {
-  // First try to get from database
-  try {
-    const config = await prisma.config.findUnique({
-      where: { key: 'anthropic_api_key' }
-    });
-
-    if (config?.value) {
-      const parsed = JSON.parse(config.value);
-      if (typeof parsed === 'string' && parsed) {
-        return parsed;
-      }
-    }
-  } catch (error) {
-    console.warn('Could not retrieve API key from database:', error);
-  }
-
-  // Fallback to environment variable
-  const envKey = process.env.ANTHROPIC_API_KEY;
-  if (!envKey) {
-    throw new Error('Anthropic API key not found in database or environment');
-  }
-
-  return envKey;
+  return '';
 }
 
 /**
@@ -125,16 +105,15 @@ export const MODEL_CONFIGS = {
 } as const;
 
 /**
- * Get configured Anthropic model for a specific use case
- * @param apiKey - Anthropic API key
- * @param config - Model configuration (defaults to STANDARD)
+ * Get configured Bedrock model for a specific use case.
+ * The apiKey argument is unused; AWS credentials come from env.
  */
 export function getAnthropicModel(
-  apiKey: string,
+  _apiKey: string,
   config: keyof typeof MODEL_CONFIGS = 'STANDARD'
 ) {
   const modelConfig = MODEL_CONFIGS[config];
-  return anthropic(modelConfig.model);
+  return bedrock(resolveModelId(modelConfig.model));
 }
 
 /**
@@ -181,7 +160,7 @@ export async function getConfiguredModelId(): Promise<string> {
  */
 export async function getConfiguredModel() {
   const modelId = await getConfiguredModelId();
-  return anthropic(modelId);
+  return bedrock(resolveModelId(modelId));
 }
 
 /**

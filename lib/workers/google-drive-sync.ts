@@ -20,7 +20,7 @@
  */
 
 import { prisma } from '../db/prisma';
-import { Anthropic } from '@anthropic-ai/sdk';
+import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 
 // Types
 interface GoogleDriveSyncConfig {
@@ -110,7 +110,7 @@ async function analyzeDocumentContent(
   criteriaIds: number[];
   confidence: number;
 }[]> {
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+  const anthropic = createAnthropicClient(anthropicApiKey);
 
   const criteriaContext = criteria
     .map(
@@ -149,7 +149,7 @@ If no evidence is found, return an empty array: []`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: resolveModelId('claude-sonnet-4-20250514'),
       max_tokens: 2000,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
