@@ -998,7 +998,7 @@ export default function DashboardPage() {
                       data={timeSeriesChartData}
                       onClick={(data) => {
                         if (data?.activeLabel) {
-                          scrollToInsight(data.activeLabel);
+                          scrollToInsight(String(data.activeLabel));
                         }
                       }}
                       style={{ cursor: "pointer" }}

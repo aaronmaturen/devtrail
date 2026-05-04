@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Container,
@@ -81,7 +81,7 @@ type DatabaseBackup = {
   created: string;
 };
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -1542,5 +1542,13 @@ export default function SettingsPage() {
         </Accordion>
       </Stack>
     </Container>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <SettingsPageContent />
+    </Suspense>
   );
 }
