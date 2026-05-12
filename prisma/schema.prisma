@@ -357,43 +357,6 @@ model ReviewDocument {
 }
 
 // ============================================================================
-// Interactive Review Models
-// ============================================================================
-
-model ReviewSession {
-  id            String           @id @default(cuid())
-  status        String // DRAFT, IN_PROGRESS, COMPLETED
-  currentStep   Int              @default(0) @map("current_step")
-  responses     ReviewResponse[]
-  componentData String?          @map("component_data") // JSON string
-  contextData   String?          @map("context_data") // JSON string for goals, reviews, etc.
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
-
-  @@index([status])
-  @@index([createdAt])
-  @@map("review_sessions")
-}
-
-model ReviewResponse {
-  id          String   @id @default(cuid())
-  sessionId   String   @map("session_id")
-  step        Int
-  questionKey String   @map("question_key") // accomplishments, improvement, goals
-  content     String // The response content
-  aiGenerated Boolean  @default(false) @map("ai_generated")
-  revisions   Int      @default(0)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  session ReviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([questionKey])
-  @@map("review_responses")
-}
-
-// ============================================================================
 // Goals Management Models
 // ============================================================================
 

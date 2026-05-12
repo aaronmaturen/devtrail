@@ -1,7 +1,6 @@
 import { performanceAnalystAgent } from './performance-analyst';
 import { goalGeneratorAgent } from './goal-generator';
 import { evidenceReviewerAgent } from './evidence-reviewer';
-import { reviewAssistantAgent } from './review-assistant';
 import { githubSyncAgent } from './github-sync';
 import { jiraSyncAgent } from './jira-sync';
 import { reportBuilderAgent } from './report-builder';
@@ -10,7 +9,6 @@ export const agents = {
   'performance-analyst': performanceAnalystAgent,
   'goal-generator': goalGeneratorAgent,
   'evidence-reviewer': evidenceReviewerAgent,
-  'review-assistant': reviewAssistantAgent,
   'github-sync': githubSyncAgent,
   'jira-sync': jiraSyncAgent,
   'report-builder': reportBuilderAgent,
@@ -31,7 +29,6 @@ export {
   performanceAnalystAgent,
   goalGeneratorAgent,
   evidenceReviewerAgent,
-  reviewAssistantAgent,
   githubSyncAgent,
   jiraSyncAgent,
   reportBuilderAgent,
