@@ -43,12 +43,29 @@ export async function GET(request: NextRequest) {
       prisma.reportDocument.count({ where }),
     ]);
 
-    // Transform to include block counts
+    // Fetch subject names for documents with subjectUserId
+    const subjectIds = documents
+      .filter((d) => d.subjectUserId && d.subjectUserId !== userId)
+      .map((d) => d.subjectUserId as string);
+
+    const subjects = subjectIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: subjectIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+
+    const subjectMap = new Map(subjects.map((s) => [s.id, s.name || s.email || 'Unknown']));
+
+    // Transform to include block counts and subject name
     const transformedDocuments = documents.map((doc) => ({
       ...doc,
       blockCount: doc.blocks.length,
       promptCount: doc.blocks.filter((b) => b.type === 'PROMPT').length,
       responseCount: doc.blocks.filter((b) => b.type === 'RESPONSE').length,
+      subjectName: doc.subjectUserId && doc.subjectUserId !== userId
+        ? subjectMap.get(doc.subjectUserId) || null
+        : null,
     }));
 
     return NextResponse.json({
@@ -78,13 +95,28 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, description, contextConfig } = body;
+    const { name, description, contextConfig, subjectUserId } = body;
 
     if (!name) {
       return NextResponse.json(
         { error: 'Name is required' },
         { status: 400 }
       );
+    }
+
+    // Validate subjectUserId if provided (must be self or a direct report)
+    if (subjectUserId && subjectUserId !== userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { reports: { select: { id: true } } },
+      });
+      const reportIds = user?.reports.map((r) => r.id) || [];
+      if (!reportIds.includes(subjectUserId)) {
+        return NextResponse.json(
+          { error: 'You can only write reviews for yourself or your direct reports' },
+          { status: 403 }
+        );
+      }
     }
 
     const document = await prisma.reportDocument.create({
@@ -94,6 +126,7 @@ export async function POST(request: NextRequest) {
         contextConfig: contextConfig ? JSON.stringify(contextConfig) : '{}',
         status: 'DRAFT',
         userId,
+        subjectUserId: subjectUserId || userId, // Default to self
       },
       include: {
         blocks: true,

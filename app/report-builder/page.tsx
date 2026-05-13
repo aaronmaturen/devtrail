@@ -19,6 +19,8 @@ import {
   Modal,
   TextInput,
   Textarea,
+  Select,
+  Avatar,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -29,6 +31,7 @@ import {
   IconTrash,
   IconEdit,
   IconCopy,
+  IconUser,
 } from '@tabler/icons-react';
 import { format } from 'date-fns';
 
@@ -40,8 +43,17 @@ type ReportDocument = {
   blockCount: number;
   promptCount: number;
   responseCount: number;
+  subjectUserId: string | null;
+  subjectName: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type DirectReport = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  image: string | null;
 };
 
 export default function ReportBuilderPage() {
@@ -49,11 +61,14 @@ export default function ReportBuilderPage() {
   const [loading, setLoading] = useState(true);
   const [createModalOpened, setCreateModalOpened] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [directReports, setDirectReports] = useState<DirectReport[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
       name: '',
       description: '',
+      subjectUserId: '', // Empty string means self
     },
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
@@ -79,7 +94,26 @@ export default function ReportBuilderPage() {
 
   useEffect(() => {
     fetchDocuments();
+    fetchDirectReports();
   }, []);
+
+  const fetchDirectReports = async () => {
+    try {
+      const response = await fetch('/api/user/manager');
+      if (response.ok) {
+        const data = await response.json();
+        setDirectReports(data.reports || []);
+      }
+      // Also get current user ID
+      const sessionRes = await fetch('/api/auth/session');
+      if (sessionRes.ok) {
+        const session = await sessionRes.json();
+        setCurrentUserId(session?.user?.id || null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch direct reports:', error);
+    }
+  };
 
   const handleCreate = async (values: typeof form.values) => {
     setCreating(true);
@@ -87,7 +121,11 @@ export default function ReportBuilderPage() {
       const response = await fetch('/api/report-builder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          name: values.name,
+          description: values.description,
+          subjectUserId: values.subjectUserId || null, // null means self
+        }),
       });
 
       if (!response.ok) {
@@ -260,6 +298,13 @@ export default function ReportBuilderPage() {
                       {doc.name}
                     </Text>
 
+                    {doc.subjectName && (
+                      <Group gap="xs" mt={4}>
+                        <IconUser size={14} />
+                        <Text size="sm" c="blue">For: {doc.subjectName}</Text>
+                      </Group>
+                    )}
+
                     {doc.description && (
                       <Text size="sm" c="dimmed" lineClamp={2}>
                         {doc.description}
@@ -310,6 +355,23 @@ export default function ReportBuilderPage() {
               rows={3}
               {...form.getInputProps('description')}
             />
+
+            {directReports.length > 0 && (
+              <Select
+                label="Review Subject"
+                description="Who is this review for?"
+                placeholder="Myself"
+                data={[
+                  { value: '', label: 'Myself (Self-Review)' },
+                  ...directReports.map((r) => ({
+                    value: r.id,
+                    label: r.name || r.email || 'Unknown',
+                  })),
+                ]}
+                {...form.getInputProps('subjectUserId')}
+                clearable
+              />
+            )}
 
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setCreateModalOpened(false)}>

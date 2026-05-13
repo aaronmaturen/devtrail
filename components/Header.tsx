@@ -27,6 +27,7 @@ import { UserMenu } from "./UserMenu";
 const links = [
   { link: "/trends", label: "Trends", icon: IconTrendingUp },
   { link: "/evidence", label: "Evidence", icon: IconFileText },
+  { link: "/goals", label: "Goals", icon: IconTarget },
   {
     link: "#reviews",
     label: "Reviews",
@@ -39,7 +40,6 @@ const links = [
     link: "#tools",
     label: "Tools",
     links: [
-      { link: "/goals", label: "Goals", icon: IconTarget },
       { link: "/sync", label: "Sync", icon: IconRefresh },
       { link: "/assistant", label: "Assistant", icon: IconRobot },
     ],

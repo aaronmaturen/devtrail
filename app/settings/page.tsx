@@ -128,6 +128,14 @@ function SettingsPageContent() {
     jiraMatch: null as { accountId: string; displayName: string; emailAddress?: string } | null,
   });
 
+  // Manager relationship state
+  const [managerInfo, setManagerInfo] = useState<{
+    manager: { id: string; name: string | null; email: string | null; image: string | null } | null;
+    reports: Array<{ id: string; name: string | null; email: string | null; image: string | null }>;
+  }>({ manager: null, reports: [] });
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string | null; email: string | null }>>([]);
+  const [savingManager, setSavingManager] = useState(false);
+
   // Org-level AI model selection
   const [selectedModel, setSelectedModel] = useState('');
 
@@ -177,6 +185,8 @@ function SettingsPageContent() {
     loadUserSettings();
     loadBackups();
     loadCriteria();
+    loadManagerInfo();
+    loadAllUsers();
   }, []);
 
   // Reload criteria when type filter changes
@@ -274,6 +284,60 @@ function SettingsPageContent() {
       }
     } catch (error) {
       console.error('Failed to load user settings:', error);
+    }
+  };
+
+  const loadManagerInfo = async () => {
+    try {
+      const response = await fetch('/api/user/manager');
+      if (response.ok) {
+        const data = await response.json();
+        setManagerInfo(data);
+      }
+    } catch (error) {
+      console.error('Failed to load manager info:', error);
+    }
+  };
+
+  const loadAllUsers = async () => {
+    try {
+      const response = await fetch('/api/users');
+      if (response.ok) {
+        const data = await response.json();
+        setAllUsers(data.users);
+      }
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    }
+  };
+
+  const saveManager = async (managerId: string | null) => {
+    setSavingManager(true);
+    try {
+      const response = await fetch('/api/user/manager', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ managerId }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setManagerInfo(prev => ({ ...prev, manager: data.manager }));
+        notifications.show({
+          title: 'Success',
+          message: managerId ? 'Manager set successfully' : 'Manager removed',
+          color: 'green',
+        });
+      } else {
+        throw new Error('Failed to save');
+      }
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update manager',
+        color: 'red',
+      });
+    } finally {
+      setSavingManager(false);
     }
   };
 
@@ -713,6 +777,43 @@ function SettingsPageContent() {
                   </Stack>
                 </Card>
               )}
+
+              {/* Manager Relationship */}
+              <Card withBorder>
+                <Stack gap="md">
+                  <Group>
+                    <IconBuilding size={24} />
+                    <div>
+                      <Text fw={500} size="lg">Manager</Text>
+                      <Text size="sm" c="dimmed">Set your manager to enable team visibility features</Text>
+                    </div>
+                    {managerInfo.manager && <Badge color="green" variant="light" ml="auto">Set</Badge>}
+                  </Group>
+
+                  <Select
+                    placeholder="Select your manager"
+                    description="Your manager will be able to view your trends and write reviews for you"
+                    data={allUsers.map((user) => ({
+                      value: user.id,
+                      label: user.name || user.email || user.id,
+                    }))}
+                    value={managerInfo.manager?.id || null}
+                    onChange={(value) => saveManager(value)}
+                    clearable
+                    searchable
+                    disabled={savingManager}
+                  />
+
+                  {managerInfo.reports.length > 0 && (
+                    <Alert color="blue" variant="light">
+                      <Text size="sm" fw={500} mb="xs">Your Direct Reports:</Text>
+                      <Text size="sm">
+                        {managerInfo.reports.map(r => r.name || r.email).join(', ')}
+                      </Text>
+                    </Alert>
+                  )}
+                </Stack>
+              </Card>
 
               {/* Developer Context */}
               <Card withBorder>

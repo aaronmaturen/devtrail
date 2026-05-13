@@ -16,6 +16,7 @@ import {
   Alert,
   Badge,
   SegmentedControl,
+  Select,
 } from "@mantine/core";
 import {
   IconTrendingUp,
@@ -25,6 +26,7 @@ import {
   IconAlertCircle,
   IconChartLine,
   IconCalendarStats,
+  IconUsers,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { MonthlyInsightCard, MonthlyInsight } from "@/components/MonthlyInsightCard";
@@ -55,6 +57,12 @@ interface DateRange {
   latest: string | null;
 }
 
+type DirectReport = {
+  id: string;
+  name: string | null;
+  email: string | null;
+};
+
 export default function TrendsPage() {
   const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
@@ -63,6 +71,10 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartType, setChartType] = useState<"line" | "area">("area");
+
+  // Team member viewing
+  const [directReports, setDirectReports] = useState<DirectReport[]>([]);
+  const [viewAsUserId, setViewAsUserId] = useState<string | null>(null);
 
   // Monthly insights state
   const [monthlyInsights, setMonthlyInsights] = useState<MonthlyInsight[]>([]);
@@ -73,25 +85,46 @@ export default function TrendsPage() {
   const [googleDocsUrl, setGoogleDocsUrl] = useState<string | null>(null);
   const insightRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Load date range on mount
+  // Load direct reports on mount
   useEffect(() => {
     loadDateRange();
+    loadDirectReports();
   }, []);
 
-  // Load data when date range changes
+  // Reload date range when viewed user changes
+  useEffect(() => {
+    loadDateRange();
+  }, [viewAsUserId]);
+
+  // Load data when date range or viewed user changes
   useEffect(() => {
     if (!dateFrom) return;
     loadTimeSeriesData();
     loadMonthlyInsights();
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, viewAsUserId]);
+
+  const loadDirectReports = async () => {
+    try {
+      const response = await fetch("/api/user/manager");
+      if (response.ok) {
+        const data = await response.json();
+        setDirectReports(data.reports || []);
+      }
+    } catch (error) {
+      console.error("Error loading direct reports:", error);
+    }
+  };
 
   const loadDateRange = async () => {
     try {
-      const response = await fetch("/api/analytics/repositories");
+      const params = new URLSearchParams();
+      if (viewAsUserId) params.append("viewAsUserId", viewAsUserId);
+
+      const response = await fetch(`/api/analytics/repositories?${params.toString()}`);
       const data = await response.json();
       if (data.dateRange) {
         setDateRange(data.dateRange);
-        if (data.dateRange.earliest && !dateFrom) {
+        if (data.dateRange.earliest) {
           setDateFrom(format(new Date(data.dateRange.earliest), "yyyy-MM-dd"));
         }
       }
@@ -110,6 +143,7 @@ export default function TrendsPage() {
       const params = new URLSearchParams();
       if (dateFrom) params.append("dateFrom", dateFrom);
       if (dateTo) params.append("dateTo", dateTo);
+      if (viewAsUserId) params.append("viewAsUserId", viewAsUserId);
 
       const response = await fetch(`/api/analytics/components/timeseries?${params.toString()}`);
       const data = await response.json();
@@ -133,6 +167,7 @@ export default function TrendsPage() {
       const params = new URLSearchParams();
       if (dateFrom) params.append("dateFrom", dateFrom);
       if (dateTo) params.append("dateTo", dateTo);
+      if (viewAsUserId) params.append("viewAsUserId", viewAsUserId);
 
       const response = await fetch(`/api/analytics/monthly-insights?${params.toString()}`);
       const data = await response.json();
@@ -381,10 +416,30 @@ export default function TrendsPage() {
         <div>
           <Title order={1}>Activity Trends</Title>
           <Text c="dimmed" mt="xs">
-            Track your development activity over time with AI-powered insights
+            {viewAsUserId
+              ? `Viewing trends for ${directReports.find(r => r.id === viewAsUserId)?.name || 'team member'}`
+              : "Track your development activity over time with AI-powered insights"}
           </Text>
         </div>
         <Group>
+          {directReports.length > 0 && (
+            <Select
+              placeholder="My Trends"
+              leftSection={<IconUsers size={16} />}
+              data={[
+                { value: "", label: "My Trends" },
+                ...directReports.map((r) => ({
+                  value: r.id,
+                  label: r.name || r.email || "Unknown",
+                })),
+              ]}
+              value={viewAsUserId || ""}
+              onChange={(value) => setViewAsUserId(value || null)}
+              clearable
+              size="sm"
+              style={{ width: 180 }}
+            />
+          )}
           <TextInput
             type="date"
             value={dateFrom}

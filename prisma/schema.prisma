@@ -29,6 +29,11 @@ model User {
   developerContext String? @map("developer_context") // Personal career context
   jiraAccountId    String? @map("jira_account_id")   // Jira user account ID for attribution
 
+  // Manager relationship (self-reference allowed for testing)
+  managerId String? @map("manager_id")
+  manager   User?   @relation("ManagerReports", fields: [managerId], references: [id])
+  reports   User[]  @relation("ManagerReports")
+
   // Relations to Auth.js models
   accounts Account[]
   sessions Session[]
@@ -39,7 +44,7 @@ model User {
   githubIssues    GitHubIssue[]
   jiraTickets     JiraTicket[]
   slackMessages   SlackMessage[]
-  reports         Report[]
+  reports_authored Report[] @relation("UserReports")
   reportDocuments ReportDocument[]
   goals           Goal[]
   reviewDocuments ReviewDocument[]
@@ -50,6 +55,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([managerId])
   @@map("users")
 }
 
@@ -402,7 +408,7 @@ model Report {
 
   // Multi-tenant: Owner of this record
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("UserReports", fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -662,9 +668,12 @@ model ReportDocument {
   // Context configuration for AI generation
   contextConfig String @default("{}") @map("context_config") // JSON: { evidenceDateRange, includeGoals, includeReviews, etc. }
 
-  // Multi-tenant: Owner of this record
+  // Multi-tenant: Owner/author of this document
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Subject: Who the review is about (defaults to self, but can be a direct report)
+  subjectUserId String? @map("subject_user_id")
 
   // Relations
   blocks ReportBlock[]
@@ -675,6 +684,7 @@ model ReportDocument {
   @@index([status])
   @@index([createdAt])
   @@index([userId])
+  @@index([subjectUserId])
   @@map("report_documents")
 }
 

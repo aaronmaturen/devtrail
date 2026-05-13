@@ -7,6 +7,7 @@ import { withAuth, isAuthError } from '@/lib/api/auth';
  * GET /api/analytics/monthly-insights
  * Returns all monthly insights, optionally filtered by date range
  * Also indicates which insights are stale and need regeneration
+ * Supports viewAsUserId for managers to view direct reports' data
  */
 export async function GET(request: NextRequest) {
   const authResult = await withAuth();
@@ -17,6 +18,27 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
+
+    // Check for viewAsUserId - allows managers to view direct reports' data
+    const viewAsUserId = searchParams.get('viewAsUserId');
+    let effectiveUserId = userId;
+
+    if (viewAsUserId && viewAsUserId !== userId) {
+      // Validate that current user is the manager of viewAsUserId
+      const targetUser = await prisma.user.findUnique({
+        where: { id: viewAsUserId },
+        select: { managerId: true },
+      });
+
+      if (!targetUser || targetUser.managerId !== userId) {
+        return NextResponse.json(
+          { error: 'You can only view data for your direct reports' },
+          { status: 403 }
+        );
+      }
+
+      effectiveUserId = viewAsUserId;
+    }
 
     // Build where clause
     const where: any = {};
@@ -36,9 +58,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch insights - filter by userId
+    // Fetch insights - filter by effective userId
     const insights = await prisma.monthlyInsight.findMany({
-      where: { userId },
+      where: { userId: effectiveUserId },
       orderBy: [
         { year: 'desc' },
         { monthNum: 'desc' },

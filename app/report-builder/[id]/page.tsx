@@ -43,6 +43,7 @@ import {
   IconCopy,
   IconCheck,
   IconDeviceFloppy,
+  IconUser,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -84,6 +85,8 @@ type ReportDocument = {
   status: string;
   contextConfig: Record<string, any>;
   blocks: ReportBlock[];
+  subjectUserId: string | null;
+  subjectName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -652,6 +655,14 @@ export default function ReportEditorPage() {
             </ActionIcon>
             <div>
               <Title order={2}>{document.name}</Title>
+              {document.subjectName && (
+                <Group gap="xs" mt={2}>
+                  <IconUser size={14} />
+                  <Text size="sm" c="blue" fw={500}>
+                    Review for: {document.subjectName}
+                  </Text>
+                </Group>
+              )}
               {document.description && (
                 <Text c="dimmed" size="sm">
                   {document.description}

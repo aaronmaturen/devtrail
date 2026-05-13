@@ -39,9 +39,20 @@ export async function GET(
       );
     }
 
+    // Fetch subject name if different from author
+    let subjectName: string | null = null;
+    if (document.subjectUserId && document.subjectUserId !== userId) {
+      const subject = await prisma.user.findUnique({
+        where: { id: document.subjectUserId },
+        select: { name: true, email: true },
+      });
+      subjectName = subject?.name || subject?.email || null;
+    }
+
     // Parse contextConfig
     const parsedDocument = {
       ...document,
+      subjectName,
       contextConfig: JSON.parse(document.contextConfig || '{}'),
       blocks: document.blocks.map((block) => ({
         ...block,
