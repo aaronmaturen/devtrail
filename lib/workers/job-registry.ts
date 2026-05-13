@@ -36,12 +36,6 @@ const JOB_HANDLERS: Record<string, HandlerLoader> = {
     return { process: mod.processHybridJiraSync };
   },
 
-  // Google Drive sync
-  GOOGLE_DRIVE_SYNC: async () => {
-    const mod = await import('./google-drive-sync');
-    return { process: mod.processGoogleDriveSyncJob };
-  },
-
   // Review analysis
   REVIEW_ANALYSIS: async () => {
     const mod = await import('./review-analysis');
@@ -137,7 +131,6 @@ export function getJobTypeDescription(jobType: string): string {
   const descriptions: Record<string, string> = {
     AGENT_GITHUB_SYNC: 'Sync GitHub PRs and issues',
     AGENT_JIRA_SYNC: 'Sync Jira tickets',
-    GOOGLE_DRIVE_SYNC: 'Sync documents from Google Drive',
     REVIEW_ANALYSIS: 'Analyze review documents',
     AI_ANALYSIS: 'AI analysis of evidence items',
     MONTHLY_INSIGHT_GENERATION: 'Generate monthly AI insights',

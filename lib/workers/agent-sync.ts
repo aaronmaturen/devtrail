@@ -7,11 +7,10 @@
  */
 
 import { generateText, stepCountIs } from 'ai';
-import { bedrock } from '@ai-sdk/amazon-bedrock';
+import { anthropic as anthropicProvider } from '@ai-sdk/anthropic';
 import { Octokit } from '@octokit/rest';
 import { prisma } from '@/lib/db/prisma';
 import { githubSyncAgent, jiraSyncAgent } from '@/lib/ai/agents';
-import { resolveModelId } from '@/lib/ai/client';
 import { JobLogger } from './utils/job-logger';
 import { getGitHubTokenForUser, getGitHubUsernameForUser } from '@/lib/config/github';
 
@@ -339,9 +338,8 @@ async function getAnthropicConfig() {
     ? JSON.parse(modelConfig.value)
     : 'claude-sonnet-4-5-20250929';
 
-  // Wrap bedrock() so callers can pass either the raw model ID or a
-  // pre-resolved Bedrock inference profile ID.
-  const anthropic = (id: string) => bedrock(resolveModelId(id));
+  // Create model provider function
+  const anthropic = (id: string) => anthropicProvider(id);
   return { anthropic, model };
 }
 

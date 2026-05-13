@@ -1,14 +1,16 @@
-import { bedrock } from '@ai-sdk/amazon-bedrock';
+import { anthropic } from '@ai-sdk/anthropic';
 import { prisma } from '../db/prisma';
-import { resolveModelId } from './client';
 
 /**
- * Returns an empty string. Kept for backward compatibility with call
- * sites that still expect to receive an "API key". On Bedrock we
- * authenticate via AWS credentials, not an Anthropic API key.
+ * Get Anthropic API key from environment.
+ * For Cloudflare Workers, this will come from environment bindings.
  */
 export async function getAnthropicApiKey(): Promise<string> {
-  return '';
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+  }
+  return apiKey;
 }
 
 /**
@@ -105,15 +107,14 @@ export const MODEL_CONFIGS = {
 } as const;
 
 /**
- * Get configured Bedrock model for a specific use case.
- * The apiKey argument is unused; AWS credentials come from env.
+ * Get configured Anthropic model for a specific use case.
  */
 export function getAnthropicModel(
   _apiKey: string,
   config: keyof typeof MODEL_CONFIGS = 'STANDARD'
 ) {
   const modelConfig = MODEL_CONFIGS[config];
-  return bedrock(resolveModelId(modelConfig.model));
+  return anthropic(modelConfig.model);
 }
 
 /**
@@ -160,7 +161,7 @@ export async function getConfiguredModelId(): Promise<string> {
  */
 export async function getConfiguredModel() {
   const modelId = await getConfiguredModelId();
-  return bedrock(resolveModelId(modelId));
+  return anthropic(modelId);
 }
 
 /**

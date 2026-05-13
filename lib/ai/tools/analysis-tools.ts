@@ -11,24 +11,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
-import { createAnthropicClient, isBedrock, resolveModelId, type AnthropicLikeClient } from '@/lib/ai/client';
+import { createAnthropicClient, resolveModelId, type AnthropicLikeClient } from '@/lib/ai/client';
 
-// Get Anthropic-compatible client from config (or AWS env when Bedrock)
+// Get Anthropic client using environment API key
 async function getAnthropicClient(): Promise<AnthropicLikeClient> {
-  if (isBedrock()) {
-    return createAnthropicClient();
-  }
-
-  const config = await prisma.config.findUnique({
-    where: { key: 'anthropic_api_key' },
-  });
-
-  if (!config?.value) {
-    throw new Error('Anthropic API key not configured');
-  }
-
-  const apiKey = JSON.parse(config.value);
-  return createAnthropicClient(apiKey);
+  return createAnthropicClient();
 }
 
 // Define parameter schemas
