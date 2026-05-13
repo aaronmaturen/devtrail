@@ -21,8 +21,6 @@ import {
 import {
   IconTrendingUp,
   IconRefresh,
-  IconBrandGoogleDrive,
-  IconExternalLink,
   IconAlertCircle,
   IconChartLine,
   IconCalendarStats,
@@ -81,8 +79,6 @@ export default function TrendsPage() {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [generatingMonths, setGeneratingMonths] = useState<Set<string>>(new Set());
   const [regeneratingAll, setRegeneratingAll] = useState(false);
-  const [syncingToGoogleDocs, setSyncingToGoogleDocs] = useState(false);
-  const [googleDocsUrl, setGoogleDocsUrl] = useState<string | null>(null);
   const insightRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Load direct reports on mount
@@ -318,44 +314,6 @@ export default function TrendsPage() {
       ref.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, []);
-
-  const handleSyncToGoogleDocs = async () => {
-    try {
-      setSyncingToGoogleDocs(true);
-
-      const response = await fetch("/api/analytics/monthly-insights/sync-google-docs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dateFrom: dateFrom ? dateFrom.substring(0, 7) : undefined,
-          dateTo: dateTo ? dateTo.substring(0, 7) : undefined,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to sync to Google Docs");
-      }
-
-      setGoogleDocsUrl(data.documentUrl);
-      notifications.show({
-        title: data.created ? "Document Created" : "Document Updated",
-        message: `${data.insightsCount} monthly insights synced to Google Docs`,
-        color: "green",
-        autoClose: 5000,
-      });
-    } catch (error: any) {
-      console.error("Error syncing to Google Docs:", error);
-      notifications.show({
-        title: "Sync Failed",
-        message: error.message || "Failed to sync to Google Docs",
-        color: "red",
-      });
-    } finally {
-      setSyncingToGoogleDocs(false);
-    }
-  };
 
   const prepareTimeSeriesChartData = () => {
     if (!timeSeriesData) return [];
@@ -629,31 +587,6 @@ export default function TrendsPage() {
             >
               Regenerate All
             </Button>
-            <Button
-              size="sm"
-              variant="light"
-              color="blue"
-              leftSection={<IconBrandGoogleDrive size={16} />}
-              onClick={handleSyncToGoogleDocs}
-              loading={syncingToGoogleDocs}
-              disabled={monthlyInsights.length === 0 || syncingToGoogleDocs}
-            >
-              Sync to Google Docs
-            </Button>
-            {googleDocsUrl && (
-              <Button
-                size="sm"
-                variant="subtle"
-                color="green"
-                component="a"
-                href={googleDocsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                rightSection={<IconExternalLink size={16} />}
-              >
-                Open Doc
-              </Button>
-            )}
           </Group>
         </Group>
 

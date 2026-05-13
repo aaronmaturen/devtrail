@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Container,
   Title,
@@ -32,7 +31,6 @@ import { notifications } from '@mantine/notifications';
 import {
   IconKey,
   IconBrandGithub,
-  IconBrandGoogle,
   IconRobot,
   IconCheck,
   IconX,
@@ -44,8 +42,6 @@ import {
   IconUser,
   IconDownload,
   IconUpload,
-  IconDatabase,
-  IconClock,
   IconListCheck,
   IconPlus,
 } from '@tabler/icons-react';
@@ -61,12 +57,6 @@ type JiraUser = {
   accountId: string;
   displayName: string;
   emailAddress?: string;
-};
-
-type DatabaseBackup = {
-  filename: string;
-  size: number;
-  created: string;
 };
 
 type Criterion = {
@@ -90,8 +80,6 @@ const CRITERION_TYPES = [
 ];
 
 function SettingsPageContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
 
@@ -99,7 +87,6 @@ function SettingsPageContent() {
   const [keysConfigured, setKeysConfigured] = useState({
     anthropic: false,
     jira: false,
-    google: false,
   });
 
   // Fetched data state
@@ -139,11 +126,6 @@ function SettingsPageContent() {
   // Org-level AI model selection
   const [selectedModel, setSelectedModel] = useState('');
 
-  // Database backup state
-  const [backups, setBackups] = useState<DatabaseBackup[]>([]);
-  const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
-  const [backupsLoading, setBackupsLoading] = useState(false);
-
   // Criteria import state
   const [criteriaFile, setCriteriaFile] = useState<File | null>(null);
 
@@ -172,9 +154,6 @@ function SettingsPageContent() {
       jiraHost: '',
       jiraEmail: '',
       jiraApiToken: '',
-      googleClientId: '',
-      googleClientSecret: '',
-      googleDefaultFolderId: '',
     },
   });
 
@@ -183,7 +162,6 @@ function SettingsPageContent() {
     loadOrgConfig();
     loadFramework();
     loadUserSettings();
-    loadBackups();
     loadCriteria();
     loadManagerInfo();
     loadAllUsers();
@@ -193,31 +171,6 @@ function SettingsPageContent() {
   useEffect(() => {
     loadCriteria();
   }, [criteriaTypeFilter]);
-
-  // Handle Google OAuth callback
-  useEffect(() => {
-    const googleAuth = searchParams.get('google_auth');
-    const message = searchParams.get('message');
-
-    if (googleAuth === 'success') {
-      notifications.show({
-        title: 'Google Connected',
-        message: 'Successfully connected to Google.',
-        color: 'green',
-        icon: <IconCheck size={16} />,
-      });
-      loadOrgConfig();
-      router.replace('/settings');
-    } else if (googleAuth === 'error') {
-      notifications.show({
-        title: 'Google OAuth Failed',
-        message: message || 'Failed to connect to Google.',
-        color: 'red',
-        icon: <IconX size={16} />,
-      });
-      router.replace('/settings');
-    }
-  }, [searchParams, router]);
 
   const loadOrgConfig = async () => {
     setConfigLoading(true);
@@ -233,12 +186,8 @@ function SettingsPageContent() {
         setKeysConfigured({
           anthropic: !!configMap.anthropic_api_key,
           jira: !!configMap.jira_host && !!configMap.jira_email && !!configMap.jira_api_token,
-          google: !!configMap.google_client_id && !!configMap.google_client_secret && !!configMap.google_refresh_token,
         });
 
-        if (configMap.google_default_folder_id) {
-          orgForm.setFieldValue('googleDefaultFolderId', configMap.google_default_folder_id);
-        }
         if (configMap.jira_host) {
           orgForm.setFieldValue('jiraHost', configMap.jira_host);
         }
@@ -477,16 +426,6 @@ function SettingsPageContent() {
         );
       }
 
-      if (orgForm.values.googleClientId) {
-        configs.push({ key: 'google_client_id', value: orgForm.values.googleClientId, encrypted: false, description: 'Google OAuth Client ID' });
-      }
-      if (orgForm.values.googleClientSecret) {
-        configs.push({ key: 'google_client_secret', value: orgForm.values.googleClientSecret, encrypted: true, description: 'Google OAuth Client Secret' });
-      }
-      if (orgForm.values.googleDefaultFolderId) {
-        configs.push({ key: 'google_default_folder_id', value: orgForm.values.googleDefaultFolderId, encrypted: false, description: 'Default Google Drive folder' });
-      }
-
       await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(configs) });
 
       notifications.show({ title: 'API Keys Saved', message: 'Organization API keys have been saved', color: 'green', icon: <IconCheck size={16} /> });
@@ -497,9 +436,6 @@ function SettingsPageContent() {
         jiraHost: orgForm.values.jiraHost,
         jiraEmail: orgForm.values.jiraEmail,
         jiraApiToken: '',
-        googleClientId: '',
-        googleClientSecret: '',
-        googleDefaultFolderId: orgForm.values.googleDefaultFolderId,
       });
     } catch (error) {
       notifications.show({ title: 'Error', message: 'Failed to save API keys', color: 'red', icon: <IconX size={16} /> });
@@ -544,90 +480,6 @@ function SettingsPageContent() {
       setFetchingJiraUsers(false);
     }
   };
-
-  const loadBackups = async () => {
-    setBackupsLoading(true);
-    try {
-      const response = await fetch('/api/database/backups');
-      if (response.ok) {
-        const data = await response.json();
-        setBackups(data.backups || []);
-      }
-    } catch (error) {
-      console.error('Failed to load backups:', error);
-    } finally {
-      setBackupsLoading(false);
-    }
-  };
-
-  const createBackup = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/database/backup', { method: 'POST' });
-      if (response.ok) {
-        const data = await response.json();
-        notifications.show({ title: 'Backup Created', message: `Created: ${data.filename}`, color: 'green', icon: <IconCheck size={16} /> });
-        await loadBackups();
-      } else {
-        throw new Error('Failed to create backup');
-      }
-    } catch (error) {
-      notifications.show({ title: 'Error', message: 'Failed to create backup', color: 'red', icon: <IconX size={16} /> });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const restoreBackup = async (filename: string) => {
-    if (!confirm(`Restore from ${filename}? This will replace the current database.`)) return;
-    setLoading(true);
-    try {
-      const response = await fetch('/api/database/restore', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename }),
-      });
-      if (response.ok) {
-        notifications.show({ title: 'Restored', message: 'Reloading...', color: 'green', icon: <IconCheck size={16} /> });
-        setSelectedBackup(null);
-        await loadBackups();
-        setTimeout(() => window.location.reload(), 2000);
-      } else {
-        throw new Error('Failed');
-      }
-    } catch (error) {
-      notifications.show({ title: 'Error', message: 'Failed to restore', color: 'red', icon: <IconX size={16} /> });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteBackup = async (filename: string) => {
-    if (!confirm(`Delete ${filename}?`)) return;
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/database/backups/${filename}`, { method: 'DELETE' });
-      if (response.ok) {
-        notifications.show({ title: 'Deleted', message: filename, color: 'blue' });
-        if (selectedBackup === filename) setSelectedBackup(null);
-        await loadBackups();
-      }
-    } catch (error) {
-      notifications.show({ title: 'Error', message: 'Failed to delete', color: 'red' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-  };
-
-  const formatDate = (dateString: string): string => new Date(dateString).toLocaleString();
 
   const importCriteria = async () => {
     if (!criteriaFile) {
@@ -905,29 +757,6 @@ function SettingsPageContent() {
                       />
                     </Stack>
 
-                    <Divider />
-
-                    {/* Google */}
-                    <Stack gap="md">
-                      <Group>
-                        <IconBrandGoogle size={18} />
-                        <Text fw={500}>Google Docs/Drive</Text>
-                        {keysConfigured.google && <Badge color="green" size="sm" variant="light">Connected</Badge>}
-                      </Group>
-                      <TextInput label="OAuth Client ID" placeholder="your-client-id.apps.googleusercontent.com" {...orgForm.getInputProps('googleClientId')} />
-                      <PasswordInput label="OAuth Client Secret" placeholder="GOCSPX-..." {...orgForm.getInputProps('googleClientSecret')} />
-                      <Button
-                        component="a"
-                        href="/api/auth/google"
-                        variant={keysConfigured.google ? 'light' : 'filled'}
-                        color={keysConfigured.google ? 'gray' : 'blue'}
-                        leftSection={<IconBrandGoogle size={16} />}
-                      >
-                        {keysConfigured.google ? 'Re-authorize' : 'Connect with Google'}
-                      </Button>
-                      <TextInput label="Default Folder ID (Optional)" placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz" {...orgForm.getInputProps('googleDefaultFolderId')} />
-                    </Stack>
-
                     <Group justify="flex-end">
                       <Button leftSection={<IconCheck size={16} />} onClick={saveOrgApiKeys} loading={loading}>Save API Keys</Button>
                     </Group>
@@ -1078,11 +907,11 @@ function SettingsPageContent() {
 
               {/* Data Management */}
               <Accordion.Item value="data-management">
-                <Accordion.Control icon={<IconDatabase size={20} />}>
+                <Accordion.Control icon={<IconDownload size={20} />}>
                   <Group>
                     <div>
                       <Text fw={500} size="lg">Data Management</Text>
-                      <Text size="sm" c="dimmed">Backup, restore, and export data</Text>
+                      <Text size="sm" c="dimmed">Export and import criteria data</Text>
                     </div>
                   </Group>
                 </Accordion.Control>
@@ -1131,59 +960,6 @@ function SettingsPageContent() {
                             <Button variant="light" color="gray" onClick={() => setCriteriaFile(null)}>Cancel</Button>
                             <Button leftSection={<IconUpload size={16} />} onClick={importCriteria} loading={loading}>Import</Button>
                           </Group>
-                        )}
-                      </Stack>
-                    </div>
-
-                    <Divider />
-
-                    {/* Database Backup */}
-                    <div>
-                      <Group mb="xs">
-                        <IconDatabase size={18} />
-                        <Text fw={500}>Database Backup & Restore</Text>
-                      </Group>
-
-                      <Stack gap="md">
-                        <Group>
-                          <Button leftSection={<IconDownload size={16} />} onClick={createBackup} loading={loading} variant="light">Create Backup</Button>
-                          <Text size="sm" c="dimmed">{backupsLoading ? <Loader size="xs" /> : `${backups.length} backup${backups.length !== 1 ? 's' : ''}`}</Text>
-                        </Group>
-
-                        {backups.length > 0 && (
-                          <Paper withBorder p="md">
-                            <Text size="sm" fw={500} mb="xs">Available Backups</Text>
-                            <Stack gap="xs">
-                              {backups.map((backup) => (
-                                <Paper
-                                  key={backup.filename}
-                                  p="sm"
-                                  withBorder={selectedBackup === backup.filename}
-                                  style={{ backgroundColor: selectedBackup === backup.filename ? 'var(--mantine-color-blue-0)' : 'var(--mantine-color-gray-0)', cursor: 'pointer' }}
-                                  onClick={() => setSelectedBackup(backup.filename)}
-                                >
-                                  <Group justify="space-between">
-                                    <div style={{ flex: 1 }}>
-                                      <Group gap="xs">
-                                        <input type="radio" checked={selectedBackup === backup.filename} onChange={() => setSelectedBackup(backup.filename)} onClick={(e) => e.stopPropagation()} />
-                                        <IconClock size={14} />
-                                        <Text size="xs" style={{ fontFamily: 'monospace' }}>{formatDate(backup.created)}</Text>
-                                      </Group>
-                                      <Text size="xs" c="dimmed" ml={28}>{formatFileSize(backup.size)}</Text>
-                                    </div>
-                                    <Button size="xs" variant="subtle" color="red" onClick={(e) => { e.stopPropagation(); deleteBackup(backup.filename); }} disabled={loading}>
-                                      <IconTrash size={14} />
-                                    </Button>
-                                  </Group>
-                                </Paper>
-                              ))}
-                            </Stack>
-                            {selectedBackup && (
-                              <Group justify="flex-end" mt="md">
-                                <Button leftSection={<IconUpload size={16} />} onClick={() => restoreBackup(selectedBackup)} loading={loading} color="green">Restore</Button>
-                              </Group>
-                            )}
-                          </Paper>
                         )}
                       </Stack>
                     </div>
