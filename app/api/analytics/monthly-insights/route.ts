@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { isInsightStale } from '@/lib/workers/monthly-insight';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/analytics/monthly-insights
@@ -8,6 +9,10 @@ import { isInsightStale } from '@/lib/workers/monthly-insight';
  * Also indicates which insights are stale and need regeneration
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const dateFrom = searchParams.get('dateFrom');
@@ -31,8 +36,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch insights
+    // Fetch insights - filter by userId
     const insights = await prisma.monthlyInsight.findMany({
+      where: { userId },
       orderBy: [
         { year: 'desc' },
         { monthNum: 'desc' },

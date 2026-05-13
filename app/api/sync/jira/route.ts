@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * @deprecated Traditional Jira sync is deprecated.
  * Use POST /api/sync/agent with agentType: 'jira' instead.
  */
 export async function POST(_request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+
   return NextResponse.json(
     {
       error: 'Traditional Jira sync is deprecated. Use /api/sync/agent with agentType: "jira" instead.',
@@ -19,6 +23,9 @@ export async function POST(_request: NextRequest) {
  * Use GET /api/sync/agent?agentType=jira instead.
  */
 export async function GET(_request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+
   return NextResponse.json(
     {
       error: 'Traditional Jira sync jobs endpoint is deprecated. Use /api/sync/agent?agentType=jira instead.',

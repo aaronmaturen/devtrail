@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/report-builder/[id]/blocks/[blockId]/accept
@@ -10,7 +11,21 @@ export async function POST(
   { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id, blockId } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { revisedContent, originalContent, refinementPrompt } = body;
 

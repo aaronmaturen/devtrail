@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/goals
  * List goals with optional filtering
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status');
@@ -14,8 +19,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build where clause
-    const where: any = {};
+    // Build where clause - always filter by userId
+    const where: any = { userId };
 
     if (status) {
       where.status = status;
@@ -73,6 +78,10 @@ export async function GET(request: NextRequest) {
  * Create new goal
  */
 export async function POST(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
     const {
@@ -118,6 +127,7 @@ export async function POST(request: NextRequest) {
         startDate: startDate ? new Date(startDate) : new Date(),
         progressPercent: progressPercent || 0,
         generatedFrom: generatedFrom ? JSON.stringify(generatedFrom) : null,
+        userId,
         milestones: milestones
           ? {
               create: milestones.map((m: any) => ({

@@ -22,6 +22,7 @@ export const saveGitHubPRTool = tool({
   description:
     'Save a GitHub Pull Request to the database. Returns the created PR ID.',
   inputSchema: z.object({
+    userId: z.string().describe('User ID who owns this PR record'),
     number: z.number().describe('PR number'),
     repo: z.string().describe('Repository in owner/repo format'),
     title: z.string().describe('PR title'),
@@ -50,6 +51,7 @@ export const saveGitHubPRTool = tool({
       .describe('Review date (ISO format)'),
   }),
   execute: async ({
+    userId,
     number,
     repo,
     title,
@@ -68,9 +70,9 @@ export const saveGitHubPRTool = tool({
     reviewedAt,
   }) => {
     try {
-      // Check if PR already exists
+      // Check if PR already exists (unique on repo+number+userRole+userId)
       const existing = await prisma.gitHubPR.findFirst({
-        where: { repo, number, userRole },
+        where: { repo, number, userRole, userId },
       });
 
       if (existing) {
@@ -119,6 +121,7 @@ export const saveGitHubPRTool = tool({
           reviewState,
           reviewBody,
           reviewedAt: reviewedAt ? new Date(reviewedAt) : null,
+          userId,
         },
       });
 
@@ -144,6 +147,7 @@ export const saveJiraTicketTool = tool({
   description:
     'Save a Jira ticket to the database. Returns the created ticket ID.',
   inputSchema: z.object({
+    userId: z.string().describe('User ID who owns this ticket record'),
     key: z.string().describe('Jira ticket key (e.g., PRO-1234)'),
     summary: z.string().describe('Ticket summary'),
     description: z.string().nullable().optional().describe('Ticket description'),
@@ -175,6 +179,7 @@ export const saveJiraTicketTool = tool({
       .describe('AI summary of comments'),
   }),
   execute: async ({
+    userId,
     key,
     summary,
     description,
@@ -205,15 +210,15 @@ export const saveJiraTicketTool = tool({
         );
       }
 
-      // Check if ticket already exists
+      // Check if ticket already exists (unique on key+userId)
       const existing = await prisma.jiraTicket.findUnique({
-        where: { key },
+        where: { key_userId: { key, userId } },
       });
 
       if (existing) {
         // Update existing
         const updated = await prisma.jiraTicket.update({
-          where: { key },
+          where: { key_userId: { key, userId } },
           data: {
             summary,
             description,
@@ -264,6 +269,7 @@ export const saveJiraTicketTool = tool({
           userRole,
           commentCount,
           commentSummary,
+          userId,
         },
       });
 
@@ -289,6 +295,7 @@ export const saveEvidenceTool = tool({
   description:
     'Create an evidence entry in the database, linking to source data (PR, Jira, Slack).',
   inputSchema: z.object({
+    userId: z.string().describe('User ID who owns this evidence record'),
     type: z
       .enum([
         'PR_AUTHORED',
@@ -337,6 +344,7 @@ export const saveEvidenceTool = tool({
       .describe('Content for manual evidence'),
   }),
   execute: async ({
+    userId,
     type,
     summary,
     category,
@@ -363,6 +371,7 @@ export const saveEvidenceTool = tool({
           slackMessageId,
           manualTitle,
           manualContent,
+          userId,
         },
       });
 
@@ -387,25 +396,25 @@ export const linkPRToJiraTool = tool({
   description: 'Create a link between a GitHub PR and a Jira ticket.',
   inputSchema: z.object({
     prId: z.string().describe('GitHubPR record ID'),
-    jiraKey: z.string().describe('Jira ticket key'),
+    jiraId: z.string().describe('JiraTicket record ID'),
   }),
-  execute: async ({ prId, jiraKey }) => {
+  execute: async ({ prId, jiraId }) => {
     try {
       // Check if Jira ticket exists
       const jiraTicket = await prisma.jiraTicket.findUnique({
-        where: { key: jiraKey },
+        where: { id: jiraId },
       });
 
       if (!jiraTicket) {
         return {
           success: false,
-          error: `Jira ticket ${jiraKey} not found in database. Save the ticket first.`,
+          error: `Jira ticket with ID ${jiraId} not found in database. Save the ticket first.`,
         };
       }
 
       // Check if link already exists
       const existing = await prisma.pRJiraLink.findFirst({
-        where: { prId, jiraKey },
+        where: { prId, jiraId },
       });
 
       if (existing) {
@@ -420,7 +429,8 @@ export const linkPRToJiraTool = tool({
       const link = await prisma.pRJiraLink.create({
         data: {
           prId,
-          jiraKey,
+          jiraKey: jiraTicket.key,
+          jiraId,
         },
       });
 

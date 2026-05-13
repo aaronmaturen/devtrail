@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 // GET /api/sync/status/[jobId] - Get job status and logs
 export async function GET(
@@ -9,10 +8,14 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { jobId } = await params;
 
     const job = await prisma.job.findUnique({
-      where: { id: jobId },
+      where: { id: jobId, userId },
     });
 
     if (!job) {
@@ -55,7 +58,21 @@ export async function PATCH(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { jobId } = await params;
+
+    // Verify job belongs to user
+    const existingJob = await prisma.job.findUnique({
+      where: { id: jobId, userId },
+    });
+
+    if (!existingJob) {
+      return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+    }
+
     const body = await request.json();
 
     // Prepare update data
@@ -121,11 +138,15 @@ export async function DELETE(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { jobId } = await params;
 
     // Update job status to CANCELLED if it's PENDING or RUNNING
     const job = await prisma.job.findUnique({
-      where: { id: jobId },
+      where: { id: jobId, userId },
     });
 
     if (!job) {

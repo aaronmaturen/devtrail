@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * PATCH /api/goals/[id]/milestones/[milestoneId]
@@ -10,6 +11,21 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; milestoneId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const { id: goalId, milestoneId } = await params;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { title, description, status, targetDate, completedDate } = body;
 
@@ -31,7 +47,7 @@ export async function PATCH(
 
     // Update milestone
     const milestone = await prisma.goalMilestone.update({
-      where: { id: (await params).milestoneId },
+      where: { id: milestoneId },
       data: updateData,
     });
 
@@ -54,8 +70,23 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; milestoneId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const { id: goalId, milestoneId } = await params;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+
     await prisma.goalMilestone.delete({
-      where: { id: (await params).milestoneId },
+      where: { id: milestoneId },
     });
 
     return NextResponse.json({ success: true });

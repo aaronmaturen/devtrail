@@ -74,11 +74,7 @@ interface SyncConfig {
   hasGithubToken: boolean;
   hasAnthropicKey: boolean;
   hasJiraConfig: boolean;
-  repositories: string[];
-  jiraProjects: string[];
-  jiraHost: string;
-  jiraEmail: string;
-  jiraApiToken: string;
+  githubOrg: string;
   userContext: string;
 }
 
@@ -94,11 +90,7 @@ export default function SyncPage() {
     hasGithubToken: false,
     hasAnthropicKey: false,
     hasJiraConfig: false,
-    repositories: [],
-    jiraProjects: [],
-    jiraHost: "",
-    jiraEmail: "",
-    jiraApiToken: "",
+    githubOrg: "",
     userContext: "",
   });
   const [startDate, setStartDate] = useState<Date | null>(null);
@@ -149,43 +141,33 @@ export default function SyncPage() {
           hasGithubToken: false,
           hasAnthropicKey: false,
           hasJiraConfig: false,
-          repositories: [],
-          jiraProjects: [],
-          jiraHost: "",
-          jiraEmail: "",
-          jiraApiToken: "",
+          githubOrg: "",
           userContext: "",
         };
 
+        let jiraHost = "";
+        let jiraEmail = "";
+        let jiraToken = "";
+
         configs.forEach((config) => {
-          if (config.key === "github_token" && config.value) {
-            newConfig.hasGithubToken = true;
-          } else if (config.key === "selected_repos" && config.value) {
-            newConfig.repositories = config.value;
+          if (config.key === "github_org" && config.value) {
+            newConfig.githubOrg = config.value;
+            newConfig.hasGithubToken = true; // If org is set, we have OAuth token
           } else if (config.key === "anthropic_api_key" && config.value) {
             newConfig.hasAnthropicKey = true;
           } else if (config.key === "user_context" && config.value) {
             newConfig.userContext = config.value;
           } else if (config.key === "jira_host" && config.value) {
-            newConfig.jiraHost = config.value;
-            newConfig.hasJiraConfig = true;
+            jiraHost = config.value;
           } else if (config.key === "jira_email" && config.value) {
-            newConfig.jiraEmail = config.value;
+            jiraEmail = config.value;
           } else if (config.key === "jira_api_token" && config.value) {
-            newConfig.jiraApiToken = config.value;
-          } else if (config.key === "selected_projects" && config.value) {
-            newConfig.jiraProjects = config.value;
+            jiraToken = config.value;
           }
         });
 
         // Only mark Jira as configured if we have all required fields
-        if (
-          !newConfig.jiraHost ||
-          !newConfig.jiraEmail ||
-          !newConfig.jiraApiToken
-        ) {
-          newConfig.hasJiraConfig = false;
-        }
+        newConfig.hasJiraConfig = !!(jiraHost && jiraEmail && jiraToken);
 
         setSyncConfig(newConfig);
       }
@@ -232,9 +214,6 @@ export default function SyncPage() {
           agentType,
           startDate: startDate?.toISOString(),
           endDate: endDate?.toISOString(),
-          repositories:
-            agentType === "github" ? syncConfig.repositories : undefined,
-          projects: agentType === "jira" ? syncConfig.jiraProjects : undefined,
           dryRun,
           updateExisting,
         }),
@@ -493,8 +472,7 @@ export default function SyncPage() {
                   </Button>
                 </Group>
 
-                {!syncConfig.hasGithubToken ||
-                syncConfig.repositories.length === 0 ? (
+                {!syncConfig.githubOrg ? (
                   <Alert
                     icon={<IconAlertCircle size={16} />}
                     title="Configuration Required"
@@ -502,12 +480,11 @@ export default function SyncPage() {
                     variant="light"
                   >
                     <Text size="sm" mb="sm">
-                      Please configure your GitHub credentials and select
-                      repositories in Settings before starting a sync.
+                      Please configure your GitHub organization in Settings before starting a sync.
                     </Text>
                     <Button
                       component={Link}
-                      href="/settings"
+                      href="/settings?tab=org"
                       leftSection={<IconSettings size={16} />}
                       size="sm"
                       variant="light"
@@ -530,23 +507,14 @@ export default function SyncPage() {
                           </ThemeIcon>
                         }
                       >
-                        <List.Item>GitHub token configured</List.Item>
-                        <List.Item>
-                          {syncConfig.repositories.length} repositor
-                          {syncConfig.repositories.length === 1
-                            ? "y"
-                            : "ies"}{" "}
-                          selected
-                        </List.Item>
+                        <List.Item>Organization: {syncConfig.githubOrg}</List.Item>
                         {syncConfig.hasAnthropicKey && (
                           <List.Item>Anthropic AI enabled</List.Item>
                         )}
                       </List>
-                      {syncConfig.repositories.length > 0 && (
-                        <Text size="xs" c="dimmed" mt="xs">
-                          Repositories: {syncConfig.repositories.join(", ")}
-                        </Text>
-                      )}
+                      <Text size="xs" c="dimmed" mt="xs">
+                        All repositories in the organization will be synced
+                      </Text>
                     </div>
 
                     <Divider />
@@ -805,8 +773,7 @@ export default function SyncPage() {
                   </Button>
                 </Group>
 
-                {!syncConfig.hasJiraConfig ||
-                syncConfig.jiraProjects.length === 0 ? (
+                {!syncConfig.hasJiraConfig ? (
                   <Alert
                     icon={<IconAlertCircle size={16} />}
                     title="Configuration Required"
@@ -814,12 +781,11 @@ export default function SyncPage() {
                     variant="light"
                   >
                     <Text size="sm" mb="sm">
-                      Please configure your Jira credentials and select projects
-                      in Settings before starting a sync.
+                      Please configure your Jira credentials in Settings before starting a sync.
                     </Text>
                     <Button
                       component={Link}
-                      href="/settings"
+                      href="/settings?tab=org"
                       leftSection={<IconSettings size={16} />}
                       size="sm"
                       variant="light"
@@ -843,20 +809,13 @@ export default function SyncPage() {
                         }
                       >
                         <List.Item>Jira credentials configured</List.Item>
-                        <List.Item>
-                          {syncConfig.jiraProjects.length} project
-                          {syncConfig.jiraProjects.length === 1 ? "" : "s"}{" "}
-                          selected
-                        </List.Item>
                         {syncConfig.hasAnthropicKey && (
                           <List.Item>Anthropic AI enabled</List.Item>
                         )}
                       </List>
-                      {syncConfig.jiraProjects.length > 0 && (
-                        <Text size="xs" c="dimmed" mt="xs">
-                          Projects: {syncConfig.jiraProjects.join(", ")}
-                        </Text>
-                      )}
+                      <Text size="xs" c="dimmed" mt="xs">
+                        All tickets assigned to you will be synced
+                      </Text>
                     </div>
 
                     <Divider />

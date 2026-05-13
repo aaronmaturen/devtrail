@@ -1,12 +1,17 @@
-import { generateText, type CoreMessage } from 'ai';
+import { generateText } from 'ai';
 import { getAgent, type AgentType } from '@/lib/ai/agents';
 import { getConfiguredModel } from '@/lib/ai/config';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    // userId available but not needed for chat - agents query data by userId internally
+
     const { messages: initialMessages, agentType } = await req.json();
 
     // Validate agent type
@@ -38,7 +43,8 @@ export async function POST(req: Request) {
     const model = await getConfiguredModel();
 
     // Manual agentic loop since AI SDK v6 beta has bug with maxSteps + Anthropic
-    let messages: CoreMessage[] = initialMessages;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let messages: any[] = initialMessages;
     let finalText = '';
     const maxIterations = 10;
 
@@ -63,13 +69,14 @@ export async function POST(req: Request) {
 
       // Check for saveResponse tool calls and collect saved responses
       for (const tr of toolResults) {
-        if (tr.toolName === 'saveResponse' && tr.output?.success) {
+        const output = tr.output as Record<string, unknown> | undefined;
+        if (tr.toolName === 'saveResponse' && output?.success) {
           // The tool returns questionId and response in its output
-          const output = tr.output as { success: boolean; questionId: string; response: string };
-          if (output.questionId && output.response) {
+          const typedOutput = output as { success: boolean; questionId: string; response: string };
+          if (typedOutput.questionId && typedOutput.response) {
             savedResponses.push({
-              questionId: output.questionId,
-              response: output.response,
+              questionId: typedOutput.questionId,
+              response: typedOutput.response,
             });
           }
         }
@@ -105,7 +112,7 @@ export async function POST(req: Request) {
               type: 'tool-call' as const,
               toolCallId: tc.toolCallId,
               toolName: tc.toolName,
-              input: tc.args ?? {},
+              input: (tc as unknown as { args?: Record<string, unknown> }).args ?? {},
             })),
           ],
         },

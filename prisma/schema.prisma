@@ -1,5 +1,5 @@
 // DevTrail Next.js - Enhanced Prisma Schema
-// Includes Job tracking, Config storage, and Review documents
+// Includes Job tracking, Config storage, Review documents, and Multi-tenant Auth
 
 generator client {
   provider = "prisma-client-js"
@@ -11,17 +11,104 @@ datasource db {
 }
 
 // ============================================================================
+// Auth.js (NextAuth v5) Models
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+
+  // GitHub-specific fields
+  githubId       String? @unique @map("github_id")
+  githubUsername String? @map("github_username")
+
+  // User settings (per-user preferences)
+  developerContext String? @map("developer_context") // Personal career context
+  jiraAccountId    String? @map("jira_account_id")   // Jira user account ID for attribution
+
+  // Relations to Auth.js models
+  accounts Account[]
+  sessions Session[]
+
+  // Relations to user data
+  evidence        Evidence[]
+  githubPRs       GitHubPR[]
+  githubIssues    GitHubIssue[]
+  jiraTickets     JiraTicket[]
+  slackMessages   SlackMessage[]
+  reports         Report[]
+  reportDocuments ReportDocument[]
+  goals           Goal[]
+  reviewDocuments ReviewDocument[]
+  reviewAnalyses  ReviewAnalysis[]
+  monthlyInsights MonthlyInsight[]
+  jobs            Job[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================================
 // Core Models
 // ============================================================================
 
 model Criterion {
   id                  Int                 @id
+  type                String              @default("staff_engineer") // staff_engineer, senior_engineer, etc.
   areaOfConcentration String              @map("area_of_concentration")
   subarea             String
   description         String
   prDetectable        Boolean             @map("pr_detectable")
   evidenceCriteria    EvidenceCriterion[]
 
+  @@index([type])
   @@map("criteria")
 }
 
@@ -58,16 +145,21 @@ model GitHubPR {
   reviewBody  String?   @map("review_body")
   reviewedAt  DateTime? @map("reviewed_at")
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   evidence  Evidence[]
   jiraLinks PRJiraLink[]
 
-  @@unique([repo, number, userRole])
+  @@unique([repo, number, userRole, userId])
   @@index([repo])
   @@index([mergedAt])
   @@index([userRole])
   @@index([createdAt])
   @@index([reviewState])
+  @@index([userId])
   @@map("github_prs")
 }
 
@@ -85,19 +177,24 @@ model GitHubIssue {
 
   labels String // JSON array
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   evidence Evidence[]
 
-  @@unique([repo, number])
+  @@unique([repo, number, userId])
   @@index([repo])
   @@index([createdAt])
   @@index([state])
+  @@index([userId])
   @@map("github_issues")
 }
 
 model JiraTicket {
   id          String  @id @default(cuid())
-  key         String  @unique // PRO-1234
+  key         String // PRO-1234 (no longer globally unique, unique per user)
   summary     String
   description String?
 
@@ -134,16 +231,22 @@ model JiraTicket {
   commentCount   Int     @default(0) @map("comment_count")
   commentSummary String? @map("comment_summary") // AI summary of discussion
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   evidence Evidence[]
   prLinks  PRJiraLink[]
 
+  @@unique([key, userId])
   @@index([userRole])
   @@index([resolvedAt])
   @@index([issueType])
   @@index([status])
   @@index([createdAt])
   @@index([epicKey])
+  @@index([userId])
   @@map("jira_tickets")
 }
 
@@ -163,26 +266,33 @@ model SlackMessage {
   // Screenshot (for AI vision analysis)
   screenshotPath String? @map("screenshot_path")
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   evidence Evidence[]
 
   @@index([timestamp])
   @@index([channel])
+  @@index([userId])
   @@map("slack_messages")
 }
 
 // Many-to-many: PRs can link to multiple Jira tickets
 model PRJiraLink {
-  id      String @id @default(cuid())
-  prId    String @map("pr_id")
-  jiraKey String @map("jira_key")
+  id      String  @id @default(cuid())
+  prId    String  @map("pr_id")
+  jiraKey String  @map("jira_key") // Legacy: references JiraTicket.key
+  jiraId  String? @map("jira_id")  // New: references JiraTicket.id (optional during migration)
 
-  pr   GitHubPR   @relation(fields: [prId], references: [id], onDelete: Cascade)
-  jira JiraTicket @relation(fields: [jiraKey], references: [key], onDelete: Cascade)
+  pr   GitHubPR    @relation(fields: [prId], references: [id], onDelete: Cascade)
+  jira JiraTicket? @relation(fields: [jiraId], references: [id], onDelete: Cascade)
 
   @@unique([prId, jiraKey])
   @@index([prId])
   @@index([jiraKey])
+  @@index([jiraId])
   @@map("pr_jira_links")
 }
 
@@ -217,6 +327,10 @@ model Evidence {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   githubPr     GitHubPR?     @relation(fields: [githubPrId], references: [id])
   githubIssue  GitHubIssue?  @relation(fields: [githubIssueId], references: [id])
@@ -233,6 +347,7 @@ model Evidence {
   @@index([scope])
   @@index([githubPrId])
   @@index([jiraTicketId])
+  @@index([userId])
   @@map("evidence")
 }
 
@@ -285,17 +400,22 @@ model Report {
   evidenceCount Int? @map("evidence_count")
   criteriaCount Int? @map("criteria_count")
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([type])
   @@index([createdAt])
   @@index([jobId])
+  @@index([userId])
   @@map("reports")
 }
 
 // ============================================================================
-// Job Queue System (NEW)
+// Job Queue System
 // ============================================================================
 
 model Job {
@@ -314,19 +434,26 @@ model Job {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  // Multi-tenant: Owner of this job
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([status])
   @@index([type])
   @@index([createdAt])
+  @@index([userId])
   @@map("jobs")
 }
 
 // ============================================================================
-// Configuration Storage (NEW)
+// Configuration Storage
+// Note: Config remains global (not user-scoped) for system settings.
+// User-specific config like GitHub tokens are stored in Account.access_token
 // ============================================================================
 
 model Config {
   id          String   @id @default(cuid())
-  key         String   @unique // github_token, anthropic_api_key, repos, etc.
+  key         String   @unique // anthropic_model, etc. (non-user-specific settings)
   value       String // JSON value
   encrypted   Boolean  @default(false) // For sensitive data
   description String? // Human-readable description
@@ -336,7 +463,7 @@ model Config {
 }
 
 // ============================================================================
-// Review Document Storage (NEW)
+// Review Document Storage
 // ============================================================================
 
 model ReviewDocument {
@@ -346,13 +473,18 @@ model ReviewDocument {
   content String // Full markdown content
   weight  Int // Recency weight for analysis
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@unique([year, type])
+  @@unique([year, type, userId])
   @@index([year])
   @@index([type])
   @@index([createdAt])
+  @@index([userId])
   @@map("review_documents")
 }
 
@@ -386,6 +518,10 @@ model Goal {
   // Progress tracking
   progressPercent Int @default(0) @map("progress_percent") // 0-100
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   milestones      GoalMilestone[]
   progressEntries GoalProgress[]
@@ -398,6 +534,7 @@ model Goal {
   @@index([createdAt])
   @@index([targetDate])
   @@index([priority])
+  @@index([userId])
   @@map("goals")
 }
 
@@ -467,7 +604,7 @@ model GoalTemplate {
 }
 
 // ============================================================================
-// Review Analysis Models (NEW)
+// Review Analysis Models
 // ============================================================================
 
 model ReviewAnalysis {
@@ -498,12 +635,17 @@ model ReviewAnalysis {
   // Relations to evidence
   evidenceLinks String? @map("evidence_links") // JSON array of evidence IDs that relate to this review
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([year])
   @@index([reviewType])
   @@index([createdAt])
+  @@index([userId])
   @@map("review_analyses")
 }
 
@@ -520,6 +662,10 @@ model ReportDocument {
   // Context configuration for AI generation
   contextConfig String @default("{}") @map("context_config") // JSON: { evidenceDateRange, includeGoals, includeReviews, etc. }
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Relations
   blocks ReportBlock[]
 
@@ -528,6 +674,7 @@ model ReportDocument {
 
   @@index([status])
   @@index([createdAt])
+  @@index([userId])
   @@map("report_documents")
 }
 
@@ -587,7 +734,7 @@ model ReportBlockRevision {
 }
 
 // ============================================================================
-// AI Analysis Background Jobs (NEW)
+// AI Analysis Background Jobs
 // ============================================================================
 
 model AnalysisJob {
@@ -619,7 +766,7 @@ model MonthlyInsight {
   id String @id @default(cuid())
 
   // Month identifier
-  month    String @unique // Format: "YYYY-MM" (e.g., "2024-11")
+  month    String // Format: "YYYY-MM" (e.g., "2024-11")
   year     Int
   monthNum Int    @map("month_num")
 
@@ -640,11 +787,17 @@ model MonthlyInsight {
   dataEndDate DateTime @map("data_end_date") // Latest PR date included in analysis
   isComplete  Boolean  @default(false) @map("is_complete") // True if generated after month ended
 
+  // Multi-tenant: Owner of this record
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([month, userId])
   @@index([year])
   @@index([monthNum])
   @@index([isComplete])
+  @@index([userId])
   @@map("monthly_insights")
 }

@@ -177,9 +177,9 @@ export default function ReportBuilderPage() {
         {/* Header */}
         <Group justify="space-between">
           <div>
-            <Title order={1}>Report Builder</Title>
+            <Title order={1}>Write Reviews</Title>
             <Text c="dimmed" size="sm">
-              Create block-based performance reports with AI assistance
+              Create performance reviews backed by your synced work evidence
             </Text>
           </div>
           <Button

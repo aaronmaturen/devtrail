@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/goals/[id]/progress
@@ -10,8 +11,23 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const goalId = (await params).id;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+
     const progressEntries = await prisma.goalProgress.findMany({
-      where: { goalId: (await params).id },
+      where: { goalId },
       orderBy: {
         createdAt: 'desc',
       },
@@ -36,6 +52,21 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const goalId = (await params).id;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { progressPercent, notes, evidence, aiSummary } = body;
 
@@ -50,7 +81,7 @@ export async function POST(
     // Create progress entry
     const progressEntry = await prisma.goalProgress.create({
       data: {
-        goalId: (await params).id,
+        goalId,
         progressPercent,
         notes: notes || null,
         evidence: evidence ? JSON.stringify(evidence) : null,
@@ -60,14 +91,14 @@ export async function POST(
 
     // Update goal's overall progress percent
     await prisma.goal.update({
-      where: { id: (await params).id },
+      where: { id: goalId },
       data: { progressPercent },
     });
 
     // If progress is 100%, mark goal as completed
     if (progressPercent === 100) {
       await prisma.goal.update({
-        where: { id: (await params).id },
+        where: { id: goalId },
         data: {
           status: 'COMPLETED',
           completedDate: new Date(),

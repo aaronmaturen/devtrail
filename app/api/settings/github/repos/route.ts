@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Octokit } from '@octokit/rest';
-import { getGitHubToken } from '@/lib/ai/config';
+import { getGitHubTokenForUser } from '@/lib/config/github';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 export const runtime = 'nodejs';
 
 /**
  * GET /api/settings/github/repos
- * Fetches available GitHub repositories using the stored token
+ * Fetches available GitHub repositories using the user's OAuth token
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get the GitHub token from centralized config
-    let token: string;
-    try {
-      token = await getGitHubToken();
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'GitHub token not configured' },
-        { status: 400 }
-      );
-    }
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    // Get the user's GitHub OAuth token
+    const token = await getGitHubTokenForUser(userId);
 
     // Create Octokit client
     const octokit = new Octokit({ auth: token });
@@ -49,7 +46,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ repositories: formattedRepos });
     } catch (error: any) {
       return NextResponse.json(
-        { error: 'Invalid GitHub token', details: error.message },
+        { error: 'Failed to fetch repositories', details: error.message },
         { status: 401 }
       );
     }

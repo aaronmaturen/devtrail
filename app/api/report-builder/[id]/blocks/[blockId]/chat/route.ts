@@ -4,6 +4,7 @@ import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 
 type MessageParam = { role: 'user' | 'assistant'; content: string };
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/report-builder/[id]/blocks/[blockId]/chat
@@ -14,7 +15,21 @@ export async function POST(
   { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id, blockId } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { message, chatHistory = [] } = body;
 
@@ -25,21 +40,13 @@ export async function POST(
       );
     }
 
-    // Fetch block and document
+    // Fetch block
     const block = await prisma.reportBlock.findFirst({
       where: { id: blockId, documentId: id },
     });
 
     if (!block) {
       return NextResponse.json({ error: 'Block not found' }, { status: 404 });
-    }
-
-    const document = await prisma.reportDocument.findUnique({
-      where: { id },
-    });
-
-    if (!document) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
     // Get API key from centralized config

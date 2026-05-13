@@ -7,6 +7,7 @@ import {
   mapCriteriaForPrompt,
   TOON_FORMAT_EXPLANATION,
 } from '@/lib/utils/toon';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/evidence/analyze-screenshot
@@ -14,6 +15,10 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    // userId available but not needed for this analysis endpoint
+
     const formData = await request.formData();
     const file = formData.get('screenshot') as File;
 

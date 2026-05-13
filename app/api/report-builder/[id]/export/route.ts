@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/report-builder/[id]/export
@@ -12,11 +13,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
     const format = request.nextUrl.searchParams.get('format') || 'markdown';
 
     const document = await prisma.reportDocument.findUnique({
-      where: { id },
+      where: { id, userId },
       include: {
         blocks: {
           orderBy: { position: 'asc' },

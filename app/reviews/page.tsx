@@ -95,9 +95,9 @@ export default function ReviewsPage() {
       <Stack gap="lg">
         {/* Header */}
         <Stack gap="xs">
-          <Title order={1}>Review Analysis</Title>
+          <Title order={1}>Feedback Received</Title>
           <Text c="dimmed">
-            Analyze performance reviews with AI to extract insights, themes, strengths, and growth areas.
+            Upload performance reviews you've received to track feedback patterns, strengths, and growth areas over time.
           </Text>
         </Stack>
 

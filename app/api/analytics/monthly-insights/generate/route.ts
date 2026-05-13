@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { triggerJobProcessing } from '@/lib/workers/process-helper';
 import { z } from 'zod';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 // Schema for generate request
 const generateRequestSchema = z.object({
@@ -16,6 +17,10 @@ const generateRequestSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const body = await request.json();
     const validatedData = generateRequestSchema.parse(body);
 
@@ -35,6 +40,7 @@ export async function POST(request: NextRequest) {
         type: 'MONTHLY_INSIGHT_GENERATION',
         status: { in: ['PENDING', 'RUNNING'] },
         config: { contains: validatedData.month },
+        userId,
       },
     });
 
@@ -64,6 +70,7 @@ export async function POST(request: NextRequest) {
           month: validatedData.month,
           force: validatedData.force,
         }),
+        userId,
       },
     });
 
@@ -100,12 +107,17 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
     const month = searchParams.get('month');
 
     const where: any = {
       type: 'MONTHLY_INSIGHT_GENERATION',
+      userId,
     };
 
     if (month) {

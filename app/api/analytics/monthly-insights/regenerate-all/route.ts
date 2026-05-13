@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { triggerJobProcessing } from '@/lib/workers/process-helper';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/analytics/monthly-insights/regenerate-all
@@ -8,6 +9,10 @@ import { triggerJobProcessing } from '@/lib/workers/process-helper';
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const body = await request.json();
     const { months } = body;
 
@@ -29,7 +34,7 @@ export async function POST(request: NextRequest) {
 
       // Delete existing insight for this month (force regeneration)
       await prisma.monthlyInsight.deleteMany({
-        where: { month },
+        where: { month, userId },
       });
 
       // Create the job
@@ -38,6 +43,7 @@ export async function POST(request: NextRequest) {
           type: 'MONTHLY_INSIGHT_GENERATION',
           status: 'PENDING',
           config: JSON.stringify({ month, force: true }),
+          userId,
         },
       });
 

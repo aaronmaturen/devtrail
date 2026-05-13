@@ -14,35 +14,25 @@ import Image from "next/image";
 import {
   IconFileText,
   IconTarget,
-  IconChartBar,
   IconRefresh,
   IconRobot,
-  IconSettings,
   IconClipboardText,
-  IconListCheck,
   IconChevronDown,
-  IconDashboard,
   IconLayoutBoard,
+  IconTrendingUp,
 } from "@tabler/icons-react";
 import classes from "./Header.module.css";
+import { UserMenu } from "./UserMenu";
 
 const links = [
-  { link: "/dashboard", label: "Dashboard", icon: IconDashboard },
-  {
-    link: "#data",
-    label: "Data",
-    links: [
-      { link: "/evidence", label: "Evidence", icon: IconFileText },
-      { link: "/criteria", label: "Criteria", icon: IconListCheck },
-      { link: "/reports", label: "Reports", icon: IconChartBar },
-    ],
-  },
+  { link: "/trends", label: "Trends", icon: IconTrendingUp },
+  { link: "/evidence", label: "Evidence", icon: IconFileText },
   {
     link: "#reviews",
     label: "Reviews",
     links: [
-      { link: "/reviews", label: "Documents", icon: IconClipboardText },
-      { link: "/report-builder", label: "Report Builder", icon: IconLayoutBoard },
+      { link: "/reviews", label: "Feedback Received", icon: IconClipboardText },
+      { link: "/report-builder", label: "Write Reviews", icon: IconLayoutBoard },
     ],
   },
   {
@@ -54,7 +44,6 @@ const links = [
       { link: "/assistant", label: "Assistant", icon: IconRobot },
     ],
   },
-  { link: "/settings", label: "Settings", icon: IconSettings },
 ];
 
 export function Header() {
@@ -125,21 +114,26 @@ export function Header() {
     <header className={classes.header}>
       <Container size="xl">
         <div className={classes.inner}>
-          <Link href="/" style={{ textDecoration: "none", color: "inherit" }}>
-            <Image
-              src="/logo.svg"
-              alt="DevTrail Logo"
-              width={32}
-              height={32}
-              priority
-            />
-          </Link>
+          <Group gap="md">
+            <Link href="/" style={{ textDecoration: "none", color: "inherit" }}>
+              <Image
+                src="/logo.svg"
+                alt="DevTrail Logo"
+                width={32}
+                height={32}
+                priority
+              />
+            </Link>
 
-          <Group gap={5} visibleFrom="sm">
-            {items}
+            <Group gap={5} visibleFrom="sm">
+              {items}
+            </Group>
           </Group>
 
-          <Burger opened={opened} onClick={toggle} size="sm" hiddenFrom="sm" aria-label="Toggle navigation menu" />
+          <Group gap="sm">
+            <UserMenu />
+            <Burger opened={opened} onClick={toggle} size="sm" hiddenFrom="sm" aria-label="Toggle navigation menu" />
+          </Group>
         </div>
       </Container>
     </header>

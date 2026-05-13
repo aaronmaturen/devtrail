@@ -1,7 +1,7 @@
 'use client';
 
 import { Container, Title, Text, Card, SimpleGrid, Group, ThemeIcon, Stack } from '@mantine/core';
-import { IconFileText, IconChartBar, IconTarget, IconRefresh, IconRobot, IconListCheck } from '@tabler/icons-react';
+import { IconFileText, IconTrendingUp, IconTarget, IconRefresh, IconRobot } from '@tabler/icons-react';
 import Link from 'next/link';
 import { Hero } from '@/components/Hero';
 
@@ -14,10 +14,10 @@ const features = [
     color: 'brand',
   },
   {
-    icon: IconChartBar,
-    title: 'Reports',
-    description: 'Generate and view performance reports',
-    href: '/reports',
+    icon: IconTrendingUp,
+    title: 'Trends',
+    description: 'Track activity over time with AI insights',
+    href: '/trends',
     color: 'forest',
   },
   {
@@ -25,13 +25,6 @@ const features = [
     title: 'Goals',
     description: 'Track and generate SMART career goals',
     href: '/goals',
-    color: 'moss',
-  },
-  {
-    icon: IconListCheck,
-    title: 'Criteria',
-    description: 'View performance review criteria',
-    href: '/criteria',
     color: 'moss',
   },
   {

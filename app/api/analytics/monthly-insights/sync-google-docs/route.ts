@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db/prisma';
 import { syncDocument, DocumentContent, DocumentSection } from '@/lib/services/google-docs';
 import { hasGoogleConfig } from '@/lib/config';
 import { format } from 'date-fns';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 // Helper to format month string to readable format
 function formatMonth(month: string): string {
@@ -125,6 +126,10 @@ function buildDocumentContent(insights: any[]): DocumentContent {
 
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     // Check if Google is configured
     const isConfigured = await hasGoogleConfig();
     if (!isConfigured) {
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest) {
     const { dateFrom, dateTo } = body;
 
     // Build query
-    const where: any = {};
+    const where: any = { userId };
     if (dateFrom || dateTo) {
       where.month = {};
       if (dateFrom) where.month.gte = dateFrom;
@@ -213,6 +218,9 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   // Check configuration status
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const isConfigured = await hasGoogleConfig();
     return NextResponse.json({
       configured: isConfigured,

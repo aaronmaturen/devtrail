@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeComponents, FilterOptions } from '@/lib/services/component-analytics';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/analytics/components
@@ -7,10 +8,16 @@ import { analyzeComponents, FilterOptions } from '@/lib/services/component-analy
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const searchParams = request.nextUrl.searchParams;
 
     // Parse filter options
-    const filterOptions: FilterOptions = {};
+    const filterOptions: FilterOptions = {
+      userId,
+    };
 
     if (searchParams.get('dateFrom')) {
       filterOptions.dateFrom = searchParams.get('dateFrom')!;

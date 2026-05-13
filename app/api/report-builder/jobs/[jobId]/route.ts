@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET - Check job status
@@ -24,10 +23,14 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { jobId } = await params;
 
     const job = await prisma.analysisJob.findUnique({
-      where: { id: jobId },
+      where: { id: jobId, userId },
     });
 
     if (!job) {
@@ -81,10 +84,14 @@ export async function DELETE(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { jobId } = await params;
 
     const job = await prisma.analysisJob.findUnique({
-      where: { id: jobId },
+      where: { id: jobId, userId },
     });
 
     if (!job) {

@@ -2,8 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { z } from 'zod';
 
+const CRITERION_TYPES = [
+  'junior_engineer',
+  'engineer',
+  'mid_engineer',
+  'senior_engineer',
+  'staff_engineer',
+  'senior_staff_engineer',
+  'principal_engineer',
+] as const;
+
 const criterionSchema = z.object({
-  id: z.number(),
+  id: z.number().optional(),
+  type: z.enum(CRITERION_TYPES).default('staff_engineer'),
   areaOfConcentration: z.string().min(1),
   subarea: z.string().min(1),
   description: z.string().min(1),
@@ -19,6 +30,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const prDetectable = searchParams.get('prDetectable');
     const area = searchParams.get('area');
+    const type = searchParams.get('type');
 
     // Build where clause
     const where: any = {};
@@ -29,6 +41,10 @@ export async function GET(request: NextRequest) {
 
     if (area) {
       where.areaOfConcentration = area;
+    }
+
+    if (type) {
+      where.type = type;
     }
 
     const criteria = await prisma.criterion.findMany({
@@ -53,9 +69,13 @@ export async function GET(request: NextRequest) {
       return acc;
     }, {} as Record<string, typeof criteria>);
 
+    // Get available types
+    const types = CRITERION_TYPES;
+
     return NextResponse.json({
       criteria,
       grouped,
+      types,
       total: criteria.length,
     });
   } catch (error) {
@@ -76,9 +96,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = criterionSchema.parse(body);
 
+    // Auto-generate ID if not provided
+    let id = validated.id;
+    if (!id) {
+      const maxId = await prisma.criterion.aggregate({ _max: { id: true } });
+      id = (maxId._max.id || 0) + 1;
+    }
+
     const criterion = await prisma.criterion.create({
       data: {
-        id: validated.id,
+        id,
+        type: validated.type,
         areaOfConcentration: validated.areaOfConcentration,
         subarea: validated.subarea,
         description: validated.description,

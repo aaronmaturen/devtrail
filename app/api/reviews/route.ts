@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * Safely parse a JSON string to array, returning empty array on failure
@@ -19,6 +20,10 @@ function safeParseArray(jsonString: string | null | undefined): string[] {
  * List all review analyses with optional filtering
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const year = searchParams.get('year');
@@ -26,8 +31,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build where clause
-    const where: any = {};
+    // Build where clause - always filter by userId
+    const where: any = { userId };
     if (year) {
       where.year = year;
     }

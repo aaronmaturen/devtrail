@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/report-builder/[id]/blocks
@@ -10,11 +11,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
 
-    // Verify document exists
+    // Verify document exists and belongs to user
     const document = await prisma.reportDocument.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!document) {
@@ -60,6 +65,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
     const body = await request.json();
     const { type, prompt, content, position, metadata } = body;
@@ -73,9 +82,9 @@ export async function POST(
       );
     }
 
-    // Verify document exists
+    // Verify document exists and belongs to user
     const document = await prisma.reportDocument.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!document) {
@@ -147,7 +156,21 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Report document not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { blockPositions } = body; // Array of { blockId, position }
 

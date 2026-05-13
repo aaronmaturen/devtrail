@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 // Job config type (inlined since goals-progress was moved to legacy)
 interface GoalProgressJobConfig {
@@ -24,12 +25,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const goalId = (await params).id;
     const body = await request.json();
 
-    // Validate goal exists
+    // Validate goal exists and belongs to user
     const goal = await prisma.goal.findUnique({
-      where: { id: goalId },
+      where: { id: goalId, userId },
     });
 
     if (!goal) {
@@ -52,6 +57,7 @@ export async function POST(
         type: 'GOAL_PROGRESS',
         status: 'PENDING',
         config: JSON.stringify(config),
+        userId,
       },
     });
 
@@ -82,12 +88,26 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const goalId = (await params).id;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
 
     // Find the most recent GOAL_PROGRESS job for this goal
     const jobs = await prisma.job.findMany({
       where: {
         type: 'GOAL_PROGRESS',
+        userId,
         config: {
           contains: goalId,
         },

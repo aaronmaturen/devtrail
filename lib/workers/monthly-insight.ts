@@ -10,6 +10,7 @@ import { endOfMonth, format, startOfMonth, isBefore } from 'date-fns';
  */
 
 export interface MonthlyInsightJobConfig {
+  userId: string;
   month: string; // Format: "YYYY-MM"
   force?: boolean; // Force regeneration even if insight exists
 }
@@ -69,9 +70,10 @@ interface DeveloperContext {
 /**
  * Fetch active goals with their milestones
  */
-async function getActiveGoals(): Promise<ActiveGoal[]> {
+async function getActiveGoals(userId: string): Promise<ActiveGoal[]> {
   const goals = await prisma.goal.findMany({
     where: {
+      userId,
       status: 'ACTIVE',
     },
     include: {
@@ -126,9 +128,10 @@ async function getAdvancementCriteria(): Promise<Criterion[]> {
 /**
  * Fetch the most recent manager review feedback
  */
-async function getManagerFeedback(): Promise<ManagerFeedback | null> {
+async function getManagerFeedback(userId: string): Promise<ManagerFeedback | null> {
   const managerReview = await prisma.reviewAnalysis.findFirst({
     where: {
+      userId,
       reviewType: 'MANAGER',
     },
     orderBy: [
@@ -172,12 +175,12 @@ async function getManagerFeedback(): Promise<ManagerFeedback | null> {
 /**
  * Fetch developer context including user context, company framework, active goals, criteria, and manager feedback
  */
-async function getDeveloperContext(): Promise<DeveloperContext> {
+async function getDeveloperContext(userId: string): Promise<DeveloperContext> {
   const [aiContext, activeGoals, criteria, managerFeedback] = await Promise.all([
     getAIContext(),
-    getActiveGoals(),
+    getActiveGoals(userId),
     getAdvancementCriteria(),
-    getManagerFeedback(),
+    getManagerFeedback(userId),
   ]);
 
   return {
@@ -216,6 +219,12 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
       throw new Error('Valid month in YYYY-MM format is required');
     }
 
+    // userId can come from config or from the job itself
+    const userId = config.userId || job.userId;
+    if (!userId) {
+      throw new Error('userId is required - not found in config or job');
+    }
+
     // Update job status to IN_PROGRESS
     await prisma.job.update({
       where: { id: jobId },
@@ -230,7 +239,7 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
     // Check for existing insight if not forcing
     if (!config.force) {
       const existing = await prisma.monthlyInsight.findUnique({
-        where: { month: config.month },
+        where: { month_userId: { month: config.month, userId } },
       });
 
       if (existing && !shouldRegenerate(existing)) {
@@ -269,13 +278,13 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
 
     // Fetch month's metrics and developer context in parallel
     const [metrics, developerContext] = await Promise.all([
-      getMonthMetrics(config.month),
-      getDeveloperContext(),
+      getMonthMetrics(config.month, userId),
+      getDeveloperContext(userId),
     ]);
 
     if (metrics.totalPrs === 0) {
       // No data for this month - create empty insight
-      const insight = await createEmptyInsight(config.month);
+      const insight = await createEmptyInsight(config.month, userId);
       await updateJobProgress(jobId, 100, 'No activity for this month');
       await prisma.job.update({
         where: { id: jobId },
@@ -295,14 +304,22 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
 
     await updateJobProgress(jobId, 40, 'Generating AI analysis');
 
-    // Build and send AI prompt
+    // Build and send AI prompt with timeout
     const prompt = buildInsightPrompt(config.month, metrics, developerContext);
-    const response = await anthropic.messages.create({
+    const AI_TIMEOUT_MS = 120000; // 2 minute timeout for AI calls
+
+    const aiPromise = anthropic.messages.create({
       model: resolveModelId(modelId),
       max_tokens: 2000,
       temperature: 0.7,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('AI analysis timed out after 2 minutes')), AI_TIMEOUT_MS);
+    });
+
+    const response = await Promise.race([aiPromise, timeoutPromise]);
 
     const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
 
@@ -322,7 +339,7 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
     const [year, monthNum] = config.month.split('-').map(Number);
 
     const insight = await prisma.monthlyInsight.upsert({
-      where: { month: config.month },
+      where: { month_userId: { month: config.month, userId } },
       create: {
         month: config.month,
         year,
@@ -338,6 +355,7 @@ export async function processMonthlyInsightJob(jobId: string): Promise<void> {
         generatedAt: new Date(),
         dataEndDate: metrics.latestPrDate || new Date(),
         isComplete,
+        userId,
       },
       update: {
         totalPrs: metrics.totalPrs,
@@ -423,14 +441,15 @@ function shouldRegenerate(insight: { month: string; isComplete: boolean; generat
 /**
  * Get metrics for a specific month
  */
-async function getMonthMetrics(month: string): Promise<MonthMetrics> {
+async function getMonthMetrics(month: string, userId: string): Promise<MonthMetrics> {
   const monthDate = new Date(`${month}-01`);
   const monthStart = startOfMonth(monthDate);
   const monthEnd = endOfMonth(monthDate);
 
-  // Fetch all evidence with PRs for this month
+  // Fetch all evidence with PRs for this month (scoped to user)
   const evidence = await prisma.evidence.findMany({
     where: {
+      userId,
       type: { in: ['PR_AUTHORED', 'PR_REVIEWED', 'GITHUB_PR'] },
       githubPrId: { not: null },
       occurredAt: {
@@ -709,14 +728,14 @@ function parseInsightResponse(responseText: string): ParsedInsight {
 /**
  * Create an empty insight for months with no activity
  */
-async function createEmptyInsight(month: string) {
+async function createEmptyInsight(month: string, userId: string) {
   const [year, monthNum] = month.split('-').map(Number);
   const monthDate = new Date(`${month}-01`);
   const monthEndDate = endOfMonth(monthDate);
   const isComplete = isBefore(monthEndDate, new Date());
 
   return prisma.monthlyInsight.upsert({
-    where: { month },
+    where: { month_userId: { month, userId } },
     create: {
       month,
       year,
@@ -732,6 +751,7 @@ async function createEmptyInsight(month: string) {
       generatedAt: new Date(),
       dataEndDate: new Date(),
       isComplete,
+      userId,
     },
     update: {
       totalPrs: 0,

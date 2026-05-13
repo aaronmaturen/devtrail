@@ -6,12 +6,17 @@ import {
   displayToInternalTypes,
   displayToInternalType,
 } from "@/lib/constants/evidence-types";
+import { withAuth, isAuthError } from "@/lib/api/auth";
 
 /**
  * GET /api/evidence
  * List evidence with optional filtering
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get("type");
@@ -20,8 +25,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build where clause
-    const where: any = {};
+    // Build where clause - always filter by userId
+    const where: any = { userId };
 
     // Map display type to internal types
     if (type && displayToInternalTypes[type]) {
@@ -83,9 +88,10 @@ export async function GET(request: NextRequest) {
       prisma.evidence.count({ where }),
     ]);
 
-    // Get statistics by type
+    // Get statistics by type (filtered by userId)
     const stats = await prisma.evidence.groupBy({
       by: ["type"],
+      where: { userId },
       _count: { type: true },
     });
 
@@ -133,12 +139,14 @@ export async function GET(request: NextRequest) {
 
         // Get linked Jira tickets
         if (e.githubPr.jiraLinks) {
-          linkedJiraTickets = e.githubPr.jiraLinks.map((link) => ({
-            key: link.jira.key,
-            summary: link.jira.summary,
-            issueType: link.jira.issueType,
-            status: link.jira.status,
-          }));
+          linkedJiraTickets = e.githubPr.jiraLinks
+            .filter((link) => link.jira !== null)
+            .map((link) => ({
+              key: link.jira!.key,
+              summary: link.jira!.summary,
+              issueType: link.jira!.issueType,
+              status: link.jira!.status,
+            }));
         }
       } else if (e.jiraTicket) {
         title = `${e.jiraTicket.key}: ${e.jiraTicket.summary}`;
@@ -235,6 +243,10 @@ export async function GET(request: NextRequest) {
  * Create new evidence entry
  */
 export async function POST(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
     const {
@@ -280,12 +292,13 @@ export async function POST(request: NextRequest) {
       category: "feature",
       scope: "medium",
       occurredAt: parsedOccurredAt,
+      userId,
     };
 
     // For PR type, try to find or create GitHubPR
     if (type === "PR" && repository && prNumber) {
       let githubPr = await prisma.gitHubPR.findFirst({
-        where: { repo: repository, number: prNumber, userRole: "AUTHOR" },
+        where: { repo: repository, number: prNumber, userRole: "AUTHOR", userId },
       });
 
       if (!githubPr) {
@@ -304,6 +317,7 @@ export async function POST(request: NextRequest) {
             components: components ? JSON.stringify(components) : "[]",
             files: "[]",
             userRole: "AUTHOR",
+            userId,
           },
         });
       }
@@ -318,6 +332,7 @@ export async function POST(request: NextRequest) {
           content: description || title,
           timestamp: parsedOccurredAt,
           permalink: slackLink,
+          userId,
         },
       });
       evidenceData.slackMessageId = slackMessage.id;

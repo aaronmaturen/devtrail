@@ -14,6 +14,7 @@ import {
   mapReviewAnalysesForPrompt,
   TOON_FORMAT_EXPLANATION,
 } from '@/lib/utils/toon';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/report-builder/[id]/blocks/[blockId]/generate
@@ -24,25 +25,31 @@ export async function POST(
   { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id, blockId } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { prompt: userPrompt, refine } = body;
 
-    // Fetch block and document
+    // Fetch block
     const block = await prisma.reportBlock.findFirst({
       where: { id: blockId, documentId: id },
     });
 
     if (!block) {
       return NextResponse.json({ error: 'Block not found' }, { status: 404 });
-    }
-
-    const document = await prisma.reportDocument.findUnique({
-      where: { id },
-    });
-
-    if (!document) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
     // Parse context config
@@ -52,7 +59,7 @@ export async function POST(
     const apiKey = await getAnthropicApiKey();
 
     // Gather context based on document config
-    const context = await gatherContext(contextConfig);
+    const context = await gatherContext(contextConfig, userId);
 
     // Get the prompt (from block's prompt field or user input)
     const promptText = userPrompt || block.prompt;
@@ -150,7 +157,7 @@ export async function POST(
 /**
  * Gather context based on document configuration
  */
-async function gatherContext(contextConfig: any) {
+async function gatherContext(contextConfig: any, userId: string) {
   const context: {
     evidence: any[];
     goals: any[];
@@ -170,7 +177,7 @@ async function gatherContext(contextConfig: any) {
   // Get goals first (so we can use their start dates for evidence filtering)
   if (contextConfig.includeGoals !== false) {
     context.goals = await prisma.goal.findMany({
-      where: { status: { in: ['ACTIVE', 'COMPLETED'] } },
+      where: { userId, status: { in: ['ACTIVE', 'COMPLETED'] } },
       include: {
         milestones: true,
         progressEntries: {
@@ -219,7 +226,7 @@ async function gatherContext(contextConfig: any) {
 
   if (contextConfig.includeEvidence !== false) {
     context.evidence = await prisma.evidence.findMany({
-      where: evidenceWhere,
+      where: { ...evidenceWhere, userId },
       include: {
         githubPr: true,
         jiraTicket: true,
@@ -236,6 +243,7 @@ async function gatherContext(contextConfig: any) {
   // Get review documents - prioritize by weight (recency) and show manager reviews first
   if (contextConfig.includeReviews !== false) {
     context.reviews = await prisma.reviewDocument.findMany({
+      where: { userId },
       orderBy: [
         { type: 'asc' }, // MANAGER comes before EMPLOYEE alphabetically
         { weight: 'desc' }, // Higher weight = more recent/relevant
@@ -245,6 +253,7 @@ async function gatherContext(contextConfig: any) {
 
     // Also fetch AI-analyzed review insights (more structured than raw reviews)
     context.reviewAnalyses = await prisma.reviewAnalysis.findMany({
+      where: { userId },
       orderBy: [
         { reviewType: 'asc' }, // MANAGER first
         { year: 'desc' },

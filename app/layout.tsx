@@ -7,6 +7,7 @@ import {
 import { Notifications } from "@mantine/notifications";
 import { ModalsProvider } from "@mantine/modals";
 import { AppShellLayout } from "@/components/AppShellLayout";
+import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ export default function RootLayout({
         <a href="#main-content" className="sr-only">
           Skip to main content
         </a>
+        <AuthProvider>
         <MantineProvider
           defaultColorScheme="light"
           theme={{
@@ -106,6 +108,7 @@ export default function RootLayout({
             </AppShellLayout>
           </ModalsProvider>
         </MantineProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma';
 import { triggerJobProcessing } from '@/lib/workers/process-helper';
 import { z } from 'zod';
 import { getAnthropicConfig, getUserContext } from '@/lib/config';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 // Schema for goal generation request
 const generateRequestSchema = z.object({
@@ -25,6 +26,10 @@ const generateRequestSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const body = await request.json();
     const validatedData = generateRequestSchema.parse(body);
 
@@ -57,6 +62,7 @@ export async function POST(request: NextRequest) {
           },
         ]),
         config: JSON.stringify(jobConfig),
+        userId,
       },
     });
 
@@ -96,12 +102,17 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
 
     const jobs = await prisma.job.findMany({
       where: {
         type: 'GOAL_GENERATION',
+        userId,
       },
       orderBy: {
         createdAt: 'desc',

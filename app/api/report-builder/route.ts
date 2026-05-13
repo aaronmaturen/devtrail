@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/report-builder
  * List all report documents
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const where: any = {};
+    // Build where clause - always filter by userId
+    const where: any = { userId };
     if (status) {
       where.status = status;
     }
@@ -66,6 +72,10 @@ export async function GET(request: NextRequest) {
  * Create a new report document
  */
 export async function POST(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
     const { name, description, contextConfig } = body;
@@ -83,6 +93,7 @@ export async function POST(request: NextRequest) {
         description: description || null,
         contextConfig: contextConfig ? JSON.stringify(contextConfig) : '{}',
         status: 'DRAFT',
+        userId,
       },
       include: {
         blocks: true,

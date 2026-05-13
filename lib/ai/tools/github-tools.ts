@@ -439,11 +439,14 @@ export const getExistingGitHubPRTool = tool({
               confidence: c.confidence,
             })),
           })),
-          jiraLinks: existingPR.jiraLinks.map((link) => ({
-            jiraKey: link.jiraKey,
-            summary: link.jira.summary,
-            issueType: link.jira.issueType,
-          })),
+          jiraLinks: existingPR.jiraLinks
+            .filter((link) => link.jira !== null)
+            .map((link) => ({
+              jiraId: link.jiraId,
+              jiraKey: link.jira!.key,
+              summary: link.jira!.summary,
+              issueType: link.jira!.issueType,
+            })),
         },
       };
     } catch (error) {

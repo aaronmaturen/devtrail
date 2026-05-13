@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/goals/[id]/milestones
@@ -10,8 +11,23 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const goalId = (await params).id;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+
     const milestones = await prisma.goalMilestone.findMany({
-      where: { goalId: (await params).id },
+      where: { goalId },
       orderBy: {
         targetDate: 'asc',
       },
@@ -36,8 +52,22 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const goalId = (await params).id;
     const body = await request.json();
     const { title, description, targetDate, status } = body;
+
+    // Verify goal belongs to user
+    const goal = await prisma.goal.findUnique({
+      where: { id: goalId, userId },
+    });
+
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
 
     // Validate required fields
     if (!title || !targetDate) {
@@ -50,7 +80,7 @@ export async function POST(
     // Create milestone
     const milestone = await prisma.goalMilestone.create({
       data: {
-        goalId: (await params).id,
+        goalId,
         title,
         description: description || null,
         targetDate: new Date(targetDate),

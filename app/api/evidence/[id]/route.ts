@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { adfToText } from '@/lib/utils/adf-to-text';
 import { typeDisplayMap } from '@/lib/constants/evidence-types';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 interface RouteParams {
   params: Promise<{
@@ -18,10 +19,14 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
 
     const evidence = await prisma.evidence.findUnique({
-      where: { id },
+      where: { id, userId },
       include: {
         githubPr: {
           include: {
@@ -95,12 +100,14 @@ export async function GET(
       mergedAt = evidence.githubPr.mergedAt;
 
       if (evidence.githubPr.jiraLinks) {
-        linkedJiraTickets = evidence.githubPr.jiraLinks.map(link => ({
-          key: link.jira.key,
-          summary: link.jira.summary,
-          issueType: link.jira.issueType,
-          status: link.jira.status,
-        }));
+        linkedJiraTickets = evidence.githubPr.jiraLinks
+          .filter(link => link.jira !== null)
+          .map(link => ({
+            key: link.jira!.key,
+            summary: link.jira!.summary,
+            issueType: link.jira!.issueType,
+            status: link.jira!.status,
+          }));
       }
     } else if (evidence.jiraTicket) {
       title = `${evidence.jiraTicket.key}: ${evidence.jiraTicket.summary}`;
@@ -184,6 +191,10 @@ export async function PUT(
   { params }: RouteParams
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
     const body = await request.json();
     const {
@@ -195,9 +206,9 @@ export async function PUT(
       criteriaIds,
     } = body;
 
-    // Check if evidence exists
+    // Check if evidence exists and belongs to user
     const existing = await prisma.evidence.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!existing) {
@@ -279,11 +290,15 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
 
-    // Check if evidence exists
+    // Check if evidence exists and belongs to user
     const existing = await prisma.evidence.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!existing) {

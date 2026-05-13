@@ -456,12 +456,13 @@ export const getExistingJiraTicketTool = tool({
   description:
     'Check if a Jira ticket already exists in the database and retrieve its details.',
   inputSchema: z.object({
+    userId: z.string().describe('User ID to scope the lookup'),
     key: z.string().describe('Jira ticket key (e.g., PRO-1234)'),
   }),
-  execute: async ({ key }) => {
+  execute: async ({ userId, key }) => {
     try {
       const existingTicket = await prisma.jiraTicket.findUnique({
-        where: { key },
+        where: { key_userId: { key, userId } },
         include: {
           evidence: {
             include: {

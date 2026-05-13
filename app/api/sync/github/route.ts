@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * @deprecated Traditional GitHub sync is deprecated.
  * Use POST /api/sync/agent with agentType: 'github' instead.
  */
 export async function POST(_request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+
   return NextResponse.json(
     {
       error: 'Traditional GitHub sync is deprecated. Use /api/sync/agent with agentType: "github" instead.',
@@ -19,6 +23,9 @@ export async function POST(_request: NextRequest) {
  * Use GET /api/sync/agent?agentType=github instead.
  */
 export async function GET(_request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+
   return NextResponse.json(
     {
       error: 'Traditional GitHub sync jobs endpoint is deprecated. Use /api/sync/agent?agentType=github instead.',

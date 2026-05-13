@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db/prisma';
 import { z } from 'zod';
-
-const prisma = new PrismaClient();
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 // Schema for agent sync request
 const agentSyncRequestSchema = z.object({
@@ -23,6 +22,10 @@ const agentSyncRequestSchema = z.object({
  * rather than hardcoded sync logic.
  */
 export async function POST(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
     const validatedData = agentSyncRequestSchema.parse(body);
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
         ? 'AGENT_GITHUB_SYNC'
         : 'AGENT_JIRA_SYNC';
 
-    // Create the job record
+    // Create the job record with userId for user-scoped data
     const job = await prisma.job.create({
       data: {
         type: jobType,
@@ -46,7 +49,8 @@ export async function POST(request: NextRequest) {
             message: `Agent-based ${validatedData.agentType} sync job created`,
           },
         ]),
-        config: JSON.stringify(validatedData),
+        config: JSON.stringify({ ...validatedData, userId }),
+        userId,
       },
     });
 
@@ -78,12 +82,17 @@ export async function POST(request: NextRequest) {
  * GET /api/sync/agent - Get recent agent sync jobs
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
     const agentType = searchParams.get('agentType'); // 'github' or 'jira'
 
     const whereClause: any = {
+      userId,
       type: {
         in: ['AGENT_GITHUB_SYNC', 'AGENT_JIRA_SYNC'],
       },

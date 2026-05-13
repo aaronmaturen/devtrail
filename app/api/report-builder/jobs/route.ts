@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db/prisma';
 import { processJob } from './processor';
-
-const prisma = new PrismaClient();
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST - Create a new analysis job
@@ -23,6 +22,10 @@ const prisma = new PrismaClient();
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const body = await request.json();
     const { blockId, documentId, type, prompt } = body;
 
@@ -49,9 +52,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify document exists
+    // Verify document exists and belongs to user
     const document = await prisma.reportDocument.findUnique({
-      where: { id: documentId },
+      where: { id: documentId, userId },
     });
 
     if (!document) {
@@ -90,6 +93,7 @@ export async function POST(request: NextRequest) {
         type,
         prompt,
         status: 'PENDING',
+        userId,
       },
     });
 
@@ -130,12 +134,16 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const documentId = searchParams.get('documentId');
     const status = searchParams.get('status');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    const where: any = {};
+    const where: any = { userId };
     if (documentId) where.documentId = documentId;
     if (status) where.status = status;
 

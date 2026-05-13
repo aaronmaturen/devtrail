@@ -8,6 +8,7 @@ import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
  */
 
 export interface ReviewAnalysisJobConfig {
+  userId: string;
   reviewText: string;
   title: string;
   year?: string;
@@ -55,6 +56,12 @@ export async function processReviewAnalysisJob(jobId: string): Promise<void> {
 
     if (!config.title || !config.title.trim()) {
       throw new Error('title is required in job config');
+    }
+
+    // userId can come from config or from the job itself
+    const userId = config.userId || job.userId;
+    if (!userId) {
+      throw new Error('userId is required - not found in config or job');
     }
 
     // Update job status to IN_PROGRESS
@@ -122,6 +129,7 @@ export async function processReviewAnalysisJob(jobId: string): Promise<void> {
         achievements: JSON.stringify(analysis.achievements),
         confidenceScore: analysis.confidenceScore,
         metadata: config.metadata ? JSON.stringify(config.metadata) : null,
+        userId,
       },
     });
 
@@ -307,6 +315,12 @@ export async function processBatchReviewAnalysis(
       throw new Error('reviews array is required in job config');
     }
 
+    // userId comes from the job
+    const userId = job.userId;
+    if (!userId) {
+      throw new Error('userId is required - not found in job');
+    }
+
     await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -330,6 +344,7 @@ export async function processBatchReviewAnalysis(
 
         // Create a sub-job config for this review
         const reviewConfig: ReviewAnalysisJobConfig = {
+          userId,
           reviewText: review.content,
           title: review.title,
           year: review.year,
@@ -371,6 +386,7 @@ export async function processBatchReviewAnalysis(
             achievements: JSON.stringify(analysis.achievements),
             confidenceScore: analysis.confidenceScore,
             metadata: reviewConfig.metadata ? JSON.stringify(reviewConfig.metadata) : null,
+            userId,
           },
         });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/report-builder/[id]/blocks/[blockId]
@@ -10,7 +11,20 @@ export async function GET(
   { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id, blockId } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Report document not found' }, { status: 404 });
+    }
 
     const block = await prisma.reportBlock.findFirst({
       where: {
@@ -53,7 +67,21 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id, blockId } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Report document not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { prompt, content, metadata, type, trackRevision = true } = body;
 
@@ -127,7 +155,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; blockId: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id, blockId } = await params;
+
+    // Verify document belongs to user
+    const document = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!document) {
+      return NextResponse.json({ error: 'Report document not found' }, { status: 404 });
+    }
 
     // Verify block exists and belongs to document
     const block = await prisma.reportBlock.findFirst({

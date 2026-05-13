@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { createAnthropicClient, resolveModelId } from '@/lib/ai/client';
 import { getAnthropicApiKey, getConfiguredModelId } from '@/lib/ai/config';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/report-builder/[id]/finalize
@@ -16,13 +17,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
     const body = await request.json();
     const { year, reviewType = 'SELF' } = body;
 
-    // Fetch the document with all blocks
+    // Fetch the document with all blocks (verify ownership)
     const document = await prisma.reportDocument.findUnique({
-      where: { id },
+      where: { id, userId },
       include: {
         blocks: {
           orderBy: { position: 'asc' },
@@ -140,6 +145,7 @@ ${fullContent}`;
           blocksCount: document.blocks.length,
           finalizedAt: new Date().toISOString(),
         }),
+        userId,
       },
     });
 

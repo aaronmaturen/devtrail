@@ -13,6 +13,7 @@ import { prisma } from '@/lib/db/prisma';
 import { githubSyncAgent, jiraSyncAgent } from '@/lib/ai/agents';
 import { resolveModelId } from '@/lib/ai/client';
 import { JobLogger } from './utils/job-logger';
+import { getGitHubTokenForUser, getGitHubUsernameForUser } from '@/lib/config/github';
 
 /**
  * Progress tracker for sync operations
@@ -353,6 +354,7 @@ interface AgentSyncConfig {
   projects?: string[];
   dryRun?: boolean;
   updateExisting?: boolean;
+  userId?: string; // Multi-tenant: user who owns this sync job
 }
 
 /**
@@ -376,19 +378,25 @@ export async function processAgentGitHubSync(jobId: string) {
     await logger.info('Starting agent-based GitHub sync');
     await logger.updateProgress(5, 'Initializing...');
 
-    // Load configuration from database
-    const [githubConfig, reposConfig, userContextConfig, githubUsernameConfig] = await Promise.all([
-      prisma.config.findUnique({ where: { key: 'github_token' } }),
-      prisma.config.findUnique({ where: { key: 'selected_repos' } }),
-      prisma.config.findUnique({ where: { key: 'user_context' } }),
-      prisma.config.findUnique({ where: { key: 'github_username' } }),
-    ]);
-
-    if (!githubConfig?.value) {
-      throw new Error('GitHub token not configured');
+    // Multi-tenant: Get user's GitHub OAuth token
+    const userId = config.userId;
+    if (!userId) {
+      throw new Error('No userId in job config - cannot determine whose GitHub to sync');
     }
 
-    const githubToken = JSON.parse(githubConfig.value);
+    // Load configuration - user token from OAuth, repos from system config
+    const [reposConfig, userContextConfig] = await Promise.all([
+      prisma.config.findUnique({ where: { key: 'selected_repos' } }),
+      prisma.config.findUnique({ where: { key: 'user_context' } }),
+    ]);
+
+    // Get GitHub token from user's OAuth account
+    let githubToken: string;
+    try {
+      githubToken = await getGitHubTokenForUser(userId);
+    } catch {
+      throw new Error('GitHub not connected. Please sign in with GitHub to enable sync.');
+    }
 
     // Parse config values
     const repositories =
@@ -398,9 +406,9 @@ export async function processAgentGitHubSync(jobId: string) {
       ? JSON.parse(userContextConfig.value)
       : '';
 
-    // Get username from config, user context, or fetch from GitHub API
+    // Get username from user profile, config, or fetch from GitHub API
     let username = config.username ||
-      (githubUsernameConfig?.value ? JSON.parse(githubUsernameConfig.value) : null) ||
+      await getGitHubUsernameForUser(userId) ||
       extractUsername(userContext);
 
     if (!username || username === 'unknown') {

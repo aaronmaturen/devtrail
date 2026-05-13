@@ -25,6 +25,7 @@ export interface ComponentData {
 }
 
 export interface FilterOptions {
+  userId?: string;
   dateFrom?: string;
   dateTo?: string;
   repositories?: string[];
@@ -124,6 +125,11 @@ export async function analyzeComponents(filterOptions?: FilterOptions): Promise<
     type: { in: ['PR_AUTHORED', 'PR_REVIEWED', 'GITHUB_PR', 'GITHUB_ISSUE'] },
     githubPrId: { not: null },
   };
+
+  // Filter by userId for multi-tenant isolation
+  if (filterOptions?.userId) {
+    where.userId = filterOptions.userId;
+  }
 
   // Filter by date range
   const defaultDateFrom = new Date();
@@ -309,6 +315,11 @@ export async function getTimeSeriesData(filterOptions?: FilterOptions) {
     githubPrId: { not: null },
   };
 
+  // Filter by userId for multi-tenant isolation
+  if (filterOptions?.userId) {
+    where.userId = filterOptions.userId;
+  }
+
   if (filterOptions?.dateFrom) {
     where.occurredAt = { ...where.occurredAt, gte: new Date(filterOptions.dateFrom) };
   }
@@ -397,12 +408,19 @@ export async function getTimeSeriesData(filterOptions?: FilterOptions) {
     .map(([date, components]) => ({ date, components }));
 }
 
-export async function getRepositories() {
+export async function getRepositories(userId?: string) {
   // Get all GithubPRs grouped by repo
+  const where: any = {
+    mergedAt: { not: null },
+  };
+
+  // Filter by userId for multi-tenant isolation
+  if (userId) {
+    where.userId = userId;
+  }
+
   const prs = await prisma.gitHubPR.findMany({
-    where: {
-      mergedAt: { not: null },
-    },
+    where,
     select: {
       repo: true,
       mergedAt: true,
@@ -440,16 +458,23 @@ export async function getRepositories() {
   }));
 }
 
-export async function getDateRange(): Promise<{ earliest: string | null; latest: string | null }> {
+export async function getDateRange(userId?: string): Promise<{ earliest: string | null; latest: string | null }> {
   // Get the earliest and latest PR dates across all repos
+  const where: any = { mergedAt: { not: null } };
+
+  // Filter by userId for multi-tenant isolation
+  if (userId) {
+    where.userId = userId;
+  }
+
   const earliest = await prisma.gitHubPR.findFirst({
-    where: { mergedAt: { not: null } },
+    where,
     orderBy: { mergedAt: 'asc' },
     select: { mergedAt: true },
   });
 
   const latest = await prisma.gitHubPR.findFirst({
-    where: { mergedAt: { not: null } },
+    where,
     orderBy: { mergedAt: 'desc' },
     select: { mergedAt: true },
   });
@@ -460,11 +485,18 @@ export async function getDateRange(): Promise<{ earliest: string | null; latest:
   };
 }
 
-export async function getComponentsList() {
+export async function getComponentsList(userId?: string) {
+  const where: any = {
+    components: { not: '' },
+  };
+
+  // Filter by userId for multi-tenant isolation
+  if (userId) {
+    where.userId = userId;
+  }
+
   const prs = await prisma.gitHubPR.findMany({
-    where: {
-      components: { not: '' },
-    },
+    where,
     select: {
       components: true,
     },

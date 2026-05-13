@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/report-builder/[id]
@@ -10,10 +11,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
 
     const document = await prisma.reportDocument.findUnique({
-      where: { id },
+      where: { id, userId },
       include: {
         blocks: {
           orderBy: { position: 'asc' },
@@ -65,7 +70,21 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
+
+    // Verify document belongs to user
+    const existingDoc = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!existingDoc) {
+      return NextResponse.json({ error: 'Report document not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { name, description, status, contextConfig } = body;
 
@@ -110,7 +129,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { id } = await params;
+
+    // Verify document belongs to user
+    const existingDoc = await prisma.reportDocument.findUnique({
+      where: { id, userId },
+    });
+
+    if (!existingDoc) {
+      return NextResponse.json({ error: 'Report document not found' }, { status: 404 });
+    }
 
     await prisma.reportDocument.delete({
       where: { id },

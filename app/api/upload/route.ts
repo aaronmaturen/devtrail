@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/upload
@@ -10,6 +11,10 @@ import { randomUUID } from 'crypto';
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const evidenceId = formData.get('evidenceId') as string | null;
@@ -44,9 +49,9 @@ export async function POST(request: NextRequest) {
 
     // If evidenceId provided, create attachment record
     if (evidenceId) {
-      // Verify evidence exists
+      // Verify evidence exists and belongs to user
       const evidence = await prisma.evidence.findUnique({
-        where: { id: evidenceId },
+        where: { id: evidenceId, userId },
       });
 
       if (!evidence) {
@@ -97,6 +102,10 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const searchParams = request.nextUrl.searchParams;
     const filename = searchParams.get('filename');
 
@@ -107,9 +116,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Delete attachment record if exists
+    // Delete attachment record if exists (verify ownership through evidence)
     const attachment = await prisma.attachment.findFirst({
-      where: { filename },
+      where: {
+        filename,
+        evidence: {
+          is: { userId },
+        },
+      },
     });
 
     if (attachment) {

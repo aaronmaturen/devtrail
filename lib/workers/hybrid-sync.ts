@@ -14,6 +14,7 @@ import { Octokit } from '@octokit/rest';
 import { prisma } from '@/lib/db/prisma';
 import { resolveModelId } from '@/lib/ai/client';
 import { JobLogger } from './utils/job-logger';
+import { getGitHubTokenForUser, getGitHubUsernameForUser } from '@/lib/config/github';
 
 // ============================================================================
 // Types
@@ -47,6 +48,7 @@ interface TicketAnalysis {
 }
 
 interface SyncConfig {
+  userId: string;
   startDate?: string;
   endDate?: string;
   projects?: string[];
@@ -91,11 +93,11 @@ interface PRAnalysis {
 
 /**
  * Fetch ALL Jira tickets with full pagination
+ * Searches by assignee across all projects (no project filter)
  */
 async function fetchAllJiraTickets(
   jira: Version3Client,
-  email: string,
-  projects: string[],
+  assignee: string,
   startDate?: string,
   endDate?: string,
   limit?: number,
@@ -104,11 +106,8 @@ async function fetchAllJiraTickets(
   const tickets: JiraTicketRaw[] = [];
   const storyPointsField = 'customfield_10028'; // Common field ID
 
-  // Build JQL for assignee
-  const jqlParts: string[] = [`assignee = "${email}"`];
-  if (projects.length > 0) {
-    jqlParts.push(`project IN (${projects.join(', ')})`);
-  }
+  // Build JQL for assignee (searches all projects)
+  const jqlParts: string[] = [`assignee = "${assignee}"`];
   if (startDate) {
     jqlParts.push(`updated >= "${startDate.split('T')[0]}"`);
   }
@@ -237,7 +236,7 @@ interface PRRef {
 async function discoverGitHubPRs(
   octokit: Octokit,
   username: string,
-  repos: string[],
+  org: string,
   startDate?: string,
   endDate?: string,
   limit?: number,
@@ -253,14 +252,16 @@ async function discoverGitHubPRs(
     dateFilter = ` merged:>=${startDate.split('T')[0]}`;
   }
 
+  // Build org filter
+  const orgFilter = org ? ` org:${org}` : '';
+
   await logger?.info('=== Phase 1: Discovering PRs (quick search) ===');
 
   // Search for authored PRs
   await logger?.info('Searching for authored PRs...');
   const authoredRefs = await searchPRRefs(
     octokit,
-    `is:pr is:merged author:${username}${dateFilter}`,
-    repos,
+    `is:pr is:merged author:${username}${orgFilter}${dateFilter}`,
     'author',
     limit,
     logger
@@ -274,8 +275,7 @@ async function discoverGitHubPRs(
     const remainingLimit = limit ? limit - prRefs.length : undefined;
     const reviewedRefs = await searchPRRefs(
       octokit,
-      `is:pr is:merged reviewed-by:${username}${dateFilter}`,
-      repos,
+      `is:pr is:merged reviewed-by:${username}${orgFilter}${dateFilter}`,
       'reviewer',
       remainingLimit,
       logger
@@ -304,60 +304,49 @@ async function discoverGitHubPRs(
 async function searchPRRefs(
   octokit: Octokit,
   query: string,
-  repos: string[],
   role: 'author' | 'reviewer',
   limit?: number,
   logger?: JobLogger
 ): Promise<PRRef[]> {
   const refs: PRRef[] = [];
+  let page = 1;
+  let hasMore = true;
 
-  const repoQueries = repos.length > 0
-    ? repos.map((repo) => `${query} repo:${repo}`)
-    : [query];
+  while (hasMore) {
+    await logger?.info(`  Searching: ${query.split(' ').slice(0, 5).join(' ')}... (page ${page})`);
 
-  for (const q of repoQueries) {
-    if (limit && refs.length >= limit) break;
+    const response = await octokit.search.issuesAndPullRequests({
+      q: query,
+      per_page: 100,
+      page,
+      sort: 'updated',
+      order: 'desc',
+    });
 
-    let page = 1;
-    let hasMore = true;
-    const perRepoLimit = limit ? Math.ceil(limit / repos.length) : undefined;
+    if (response.data.items.length === 0) {
+      hasMore = false;
+      break;
+    }
 
-    while (hasMore) {
-      await logger?.info(`  Searching: ${q.split(' ').slice(0, 4).join(' ')}... (page ${page})`);
-
-      const response = await octokit.search.issuesAndPullRequests({
-        q,
-        per_page: Math.min(100, perRepoLimit || 100),
-        page,
-        sort: 'updated',
-        order: 'desc',
-      });
-
-      if (response.data.items.length === 0) {
+    for (const item of response.data.items) {
+      if (limit && refs.length >= limit) {
         hasMore = false;
         break;
       }
 
-      for (const item of response.data.items) {
-        if (limit && refs.length >= limit) {
-          hasMore = false;
-          break;
-        }
+      const [owner, repo] = item.repository_url.split('/').slice(-2);
+      refs.push({
+        repo: `${owner}/${repo}`,
+        number: item.number,
+        title: item.title,
+        role,
+      });
+    }
 
-        const [owner, repo] = item.repository_url.split('/').slice(-2);
-        refs.push({
-          repo: `${owner}/${repo}`,
-          number: item.number,
-          title: item.title,
-          role,
-        });
-      }
-
-      if (response.data.items.length < 100 || (perRepoLimit && refs.length >= perRepoLimit)) {
-        hasMore = false;
-      } else {
-        page++;
-      }
+    if (response.data.items.length < 100) {
+      hasMore = false;
+    } else {
+      page++;
     }
   }
 
@@ -600,11 +589,12 @@ async function saveTicketWithEvidence(
   ticket: JiraTicketRaw,
   analysis: TicketAnalysis,
   userRole: 'assignee' | 'reviewer',
+  userId: string,
   logger?: JobLogger
 ): Promise<void> {
-  // Upsert the Jira ticket
+  // Upsert the Jira ticket (unique on key+userId)
   const savedTicket = await prisma.jiraTicket.upsert({
-    where: { key: ticket.key },
+    where: { key_userId: { key: ticket.key, userId } },
     update: {
       summary: ticket.summary,
       description: ticket.description,
@@ -633,12 +623,13 @@ async function saveTicketWithEvidence(
       epicSummary: ticket.epicSummary,
       createdAt: new Date(ticket.createdAt),
       resolvedAt: ticket.resolvedAt ? new Date(ticket.resolvedAt) : null,
+      userId,
     },
   });
 
   // Create or update evidence
   const existingEvidence = await prisma.evidence.findFirst({
-    where: { jiraTicketId: savedTicket.id },
+    where: { jiraTicketId: savedTicket.id, userId },
   });
 
   const occurredAt = ticket.resolvedAt
@@ -664,6 +655,7 @@ async function saveTicketWithEvidence(
         scope: analysis.scope,
         occurredAt,
         jiraTicketId: savedTicket.id,
+        userId,
       },
     });
 
@@ -697,12 +689,13 @@ async function saveTicketWithEvidence(
 async function savePRWithEvidence(
   pr: GitHubPRRaw,
   analysis: PRAnalysis,
+  userId: string,
   logger?: JobLogger
 ): Promise<void> {
-  // Upsert the GitHub PR
+  // Upsert the GitHub PR (unique on repo+number+userRole+userId)
   const savedPR = await prisma.gitHubPR.upsert({
     where: {
-      repo_number_userRole: { repo: pr.repo, number: pr.number, userRole: pr.role },
+      repo_number_userRole_userId: { repo: pr.repo, number: pr.number, userRole: pr.role, userId },
     },
     update: {
       title: pr.title,
@@ -730,12 +723,13 @@ async function savePRWithEvidence(
       components: JSON.stringify(analysis.components),
       createdAt: new Date(pr.createdAt),
       mergedAt: pr.mergedAt ? new Date(pr.mergedAt) : null,
+      userId,
     },
   });
 
   // Create or update evidence
   const existingEvidence = await prisma.evidence.findFirst({
-    where: { githubPrId: savedPR.id },
+    where: { githubPrId: savedPR.id, userId },
   });
 
   const occurredAt = pr.mergedAt ? new Date(pr.mergedAt) : new Date(pr.createdAt);
@@ -759,6 +753,7 @@ async function savePRWithEvidence(
         scope: analysis.scope,
         occurredAt,
         githubPrId: savedPR.id,
+        userId,
       },
     });
 
@@ -786,17 +781,20 @@ async function savePRWithEvidence(
   // Link to Jira if key found
   if (pr.jiraKey) {
     const jiraTicket = await prisma.jiraTicket.findUnique({
-      where: { key: pr.jiraKey },
+      where: { key_userId: { key: pr.jiraKey, userId } },
     });
     if (jiraTicket) {
       await prisma.pRJiraLink.upsert({
         where: {
           prId_jiraKey: { prId: savedPR.id, jiraKey: pr.jiraKey },
         },
-        update: {},
+        update: {
+          jiraId: jiraTicket.id,
+        },
         create: {
           prId: savedPR.id,
           jiraKey: pr.jiraKey,
+          jiraId: jiraTicket.id,
         },
       });
     }
@@ -828,14 +826,14 @@ export async function processHybridJiraSync(jobId: string) {
     await logger.updateProgress(5, 'Initializing...');
 
     // Load configuration
-    const [jiraHostConfig, jiraEmailConfig, jiraTokenConfig, projectsConfig, apiKeyConfig, modelConfig] =
+    const [jiraHostConfig, jiraEmailConfig, jiraTokenConfig, apiKeyConfig, modelConfig, userRecord] =
       await Promise.all([
         prisma.config.findUnique({ where: { key: 'jira_host' } }),
         prisma.config.findUnique({ where: { key: 'jira_email' } }),
         prisma.config.findUnique({ where: { key: 'jira_api_token' } }),
-        prisma.config.findUnique({ where: { key: 'selected_projects' } }),
         prisma.config.findUnique({ where: { key: 'anthropic_api_key' } }),
         prisma.config.findUnique({ where: { key: 'selected_model' } }),
+        prisma.user.findUnique({ where: { id: config.userId }, select: { jiraAccountId: true, email: true } }),
       ]);
 
     if (!jiraHostConfig?.value || !jiraEmailConfig?.value || !jiraTokenConfig?.value) {
@@ -848,12 +846,13 @@ export async function processHybridJiraSync(jobId: string) {
     const jiraHost = JSON.parse(jiraHostConfig.value);
     const jiraEmail = JSON.parse(jiraEmailConfig.value);
     const jiraToken = JSON.parse(jiraTokenConfig.value);
-    const projects = config.projects || (projectsConfig?.value ? JSON.parse(projectsConfig.value) : []);
     const anthropicApiKey = JSON.parse(apiKeyConfig.value);
     const model = modelConfig?.value ? JSON.parse(modelConfig.value) : 'claude-sonnet-4-5-20250929';
 
-    await logger.info(`User: ${jiraEmail}`);
-    await logger.info(`Projects: ${projects.join(', ') || 'all'}`);
+    // Use user's linked Jira account ID if available, otherwise fall back to their email
+    const jiraAssignee = userRecord?.jiraAccountId || userRecord?.email || jiraEmail;
+
+    await logger.info(`Jira assignee: ${jiraAssignee}`);
     await logger.updateProgress(10, 'Connecting to Jira...');
 
     // Create Jira client
@@ -868,8 +867,7 @@ export async function processHybridJiraSync(jobId: string) {
     const fetchLimit = config.dryRun ? DRY_RUN_LIMIT : undefined;
     const allTickets = await fetchAllJiraTickets(
       jira,
-      jiraEmail,
-      projects,
+      jiraAssignee,
       config.startDate,
       config.endDate,
       fetchLimit,
@@ -883,7 +881,7 @@ export async function processHybridJiraSync(jobId: string) {
     let ticketsToProcess = allTickets;
     if (!config.updateExisting) {
       const existingKeys = await prisma.jiraTicket.findMany({
-        where: { key: { in: allTickets.map((t) => t.key) } },
+        where: { key: { in: allTickets.map((t) => t.key) }, userId: config.userId },
         select: { key: true },
       });
       const existingKeySet = new Set(existingKeys.map((e) => e.key));
@@ -939,7 +937,7 @@ export async function processHybridJiraSync(jobId: string) {
       const ticket = ticketsToProcess[i];
       const analysis = analyses.find((a) => a.key === ticket.key);
       if (analysis) {
-        await saveTicketWithEvidence(ticket, analysis, 'assignee', logger);
+        await saveTicketWithEvidence(ticket, analysis, 'assignee', config.userId, logger);
         saved++;
       }
       const progress = 80 + Math.floor((i / ticketsToProcess.length) * 18);
@@ -984,31 +982,24 @@ export async function processHybridGitHubSync(jobId: string) {
     await logger.updateProgress(5, 'Initializing...');
 
     // Load configuration
-    await logger.info('Loading configuration from database...');
-    const [githubTokenConfig, reposConfig, usernameConfig, apiKeyConfig, modelConfig] = await Promise.all([
-      prisma.config.findUnique({ where: { key: 'github_token' } }),
-      prisma.config.findUnique({ where: { key: 'selected_repos' } }),
-      prisma.config.findUnique({ where: { key: 'github_username' } }),
-      prisma.config.findUnique({ where: { key: 'anthropic_api_key' } }),
+    await logger.info('Loading configuration...');
+
+    // Get user's GitHub OAuth token and username
+    const githubToken = await getGitHubTokenForUser(config.userId);
+    let username = await getGitHubUsernameForUser(config.userId);
+
+    // Get other config from database
+    const [orgConfig, modelConfig] = await Promise.all([
+      prisma.config.findUnique({ where: { key: 'github_org' } }),
       prisma.config.findUnique({ where: { key: 'selected_model' } }),
     ]);
 
-    if (!githubTokenConfig?.value) {
-      throw new Error('GitHub token not configured');
-    }
-    if (!apiKeyConfig?.value) {
-      throw new Error('Anthropic API key not configured');
-    }
-
-    const githubToken = JSON.parse(githubTokenConfig.value);
-    const repos = config.repositories || (reposConfig?.value ? JSON.parse(reposConfig.value) : []);
-    const anthropicApiKey = JSON.parse(apiKeyConfig.value);
+    const githubOrg = orgConfig?.value ? JSON.parse(orgConfig.value) : '';
     const model = modelConfig?.value ? JSON.parse(modelConfig.value) : 'claude-sonnet-4-5-20250929';
 
-    // Get username from config or API
-    let username = usernameConfig?.value ? JSON.parse(usernameConfig.value) : null;
     const octokit = new Octokit({ auth: githubToken });
 
+    // Fetch username from API if not stored
     if (!username) {
       await logger.info('Fetching GitHub username from API...');
       const { data } = await octokit.users.getAuthenticated();
@@ -1016,7 +1007,7 @@ export async function processHybridGitHubSync(jobId: string) {
     }
 
     await logger.info(`User: ${username}`);
-    await logger.info(`Repositories: ${repos.join(', ') || 'all'}`);
+    await logger.info(`Organization: ${githubOrg || 'all'}`);
     await logger.info(`Date range: ${config.startDate || '1 year ago'} to ${config.endDate || 'now'}`);
     await logger.updateProgress(10, 'Discovering PRs...');
 
@@ -1026,7 +1017,7 @@ export async function processHybridGitHubSync(jobId: string) {
     const discoveredPRs = await discoverGitHubPRs(
       octokit,
       username,
-      repos,
+      githubOrg,
       config.startDate,
       config.endDate,
       discoveryLimit,
@@ -1041,6 +1032,7 @@ export async function processHybridGitHubSync(jobId: string) {
       await logger.info('Checking database for existing PRs...');
       const existingPRs = await prisma.gitHubPR.findMany({
         where: {
+          userId: config.userId,
           OR: discoveredPRs.map((pr) => ({ repo: pr.repo, number: pr.number })),
         },
         select: { repo: true, number: true },
@@ -1084,7 +1076,8 @@ export async function processHybridGitHubSync(jobId: string) {
     for (let i = 0; i < prsWithDetails.length; i += BATCH_SIZE) {
       const batch = prsWithDetails.slice(i, i + BATCH_SIZE);
       await logger.info(`Analyzing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(prsWithDetails.length / BATCH_SIZE)} (${batch.length} PRs)...`);
-      const batchAnalyses = await analyzePRsBatch(batch, criteriaForAI, anthropicApiKey, model, logger);
+      // Empty string for anthropicApiKey - unused with Bedrock (uses AWS env credentials)
+      const batchAnalyses = await analyzePRsBatch(batch, criteriaForAI, '', model, logger);
       analyses.push(...batchAnalyses);
 
       const progress = 50 + Math.floor((i / prsWithDetails.length) * 30);
@@ -1099,7 +1092,7 @@ export async function processHybridGitHubSync(jobId: string) {
       const pr = prsWithDetails[i];
       const analysis = analyses.find((a) => a.repo === pr.repo && a.number === pr.number);
       if (analysis) {
-        await savePRWithEvidence(pr, analysis, logger);
+        await savePRWithEvidence(pr, analysis, config.userId, logger);
         saved++;
       }
       const progress = 80 + Math.floor((i / prsWithDetails.length) * 18);

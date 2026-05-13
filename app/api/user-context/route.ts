@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserContext, saveUserContext } from '@/lib/services/review-context';
+import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/user-context
- * Get user/developer context
+ * Get user/developer context from User model
  */
 export async function GET(request: NextRequest) {
   try {
-    const userContext = await getUserContext();
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { developerContext: true },
+    });
 
     return NextResponse.json({
-      userContext: userContext || '',
-      exists: userContext !== null,
+      userContext: user?.developerContext || '',
+      exists: !!user?.developerContext,
     });
   } catch (error) {
     console.error('Error fetching user context:', error);
@@ -24,10 +32,14 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/user-context
- * Save user/developer context
+ * Save user/developer context to User model
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { userContext } = await request.json();
 
     if (typeof userContext !== 'string') {
@@ -37,7 +49,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await saveUserContext(userContext);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { developerContext: userContext || null },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

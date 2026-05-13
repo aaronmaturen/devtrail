@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { triggerJobProcessing } from '@/lib/workers/process-helper';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * POST /api/evidence/google-drive
@@ -35,6 +36,10 @@ import { triggerJobProcessing } from '@/lib/workers/process-helper';
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const body = await request.json();
 
     const {
@@ -94,6 +99,7 @@ export async function POST(request: NextRequest) {
             message: 'Google Drive sync job created',
           },
         ]),
+        userId,
       },
     });
 
@@ -125,6 +131,10 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await withAuth();
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const jobId = searchParams.get('jobId');
 
@@ -139,7 +149,7 @@ export async function GET(request: NextRequest) {
     }
 
     const job = await prisma.job.findUnique({
-      where: { id: jobId },
+      where: { id: jobId, userId },
     });
 
     if (!job) {

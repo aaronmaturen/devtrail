@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { withAuth, isAuthError } from '@/lib/api/auth';
 
 /**
  * GET /api/data/jira-tickets - Get Jira tickets from the normalized schema
@@ -16,6 +17,10 @@ import { prisma } from '@/lib/db/prisma';
  * - includeEvidence: Include linked evidence records (default false)
  */
 export async function GET(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const { searchParams } = new URL(request.url);
     const project = searchParams.get('project');
@@ -28,8 +33,8 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const includeEvidence = searchParams.get('includeEvidence') === 'true';
 
-    // Build where clause
-    const where: any = {};
+    // Build where clause - always filter by userId
+    const where: any = { userId };
 
     if (project) {
       where.key = { startsWith: `${project}-` };
@@ -148,6 +153,10 @@ export async function GET(request: NextRequest) {
  * POST /api/data/jira-tickets - Get statistics about Jira tickets
  */
 export async function POST(request: NextRequest) {
+  const authResult = await withAuth();
+  if (isAuthError(authResult)) return authResult;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
 
@@ -155,7 +164,7 @@ export async function POST(request: NextRequest) {
       const startDate = body.startDate ? new Date(body.startDate) : undefined;
       const endDate = body.endDate ? new Date(body.endDate) : undefined;
 
-      const where: any = {};
+      const where: any = { userId };
       if (startDate || endDate) {
         where.resolvedAt = {};
         if (startDate) where.resolvedAt.gte = startDate;
