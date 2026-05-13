@@ -714,6 +714,45 @@ export const getReviewAnalysesTool = tool({
 });
 
 /**
+ * Tool: Save Review Response
+ * Save a formatted response to a review question
+ */
+export const saveResponseTool = tool({
+  description: 'Save a formatted response to a review question. Call this tool when you have drafted a response that is ready to be saved to the review form. The response should be exactly 3-5 complete sentences with no markdown formatting, headers, or explanations - just the plain text response.',
+  inputSchema: z.object({
+    questionId: z.enum(['accomplishments', 'improvement', 'goals']).describe('The question ID to save the response for'),
+    response: z.string().describe('The formatted response text (3-5 sentences, plain text only, no markdown)'),
+  }),
+  execute: async ({ questionId, response }) => {
+    // Validate sentence count (rough check)
+    const sentences = response.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const sentenceCount = sentences.length;
+
+    if (sentenceCount < 3) {
+      return {
+        success: false,
+        error: `Response has only ${sentenceCount} sentences. Please write at least 3 sentences.`,
+      };
+    }
+
+    if (sentenceCount > 6) {
+      return {
+        success: false,
+        error: `Response has ${sentenceCount} sentences. Please keep it to 5 sentences or fewer.`,
+      };
+    }
+
+    return {
+      success: true,
+      questionId,
+      response,
+      sentenceCount,
+      message: `Response saved for ${questionId} question (${sentenceCount} sentences)`,
+    };
+  },
+});
+
+/**
  * Export all tools as a collection for easy use with AI SDK
  */
 export const devtrailTools = {
@@ -724,6 +763,7 @@ export const devtrailTools = {
   getEvidenceStats: getEvidenceStatsTool,
   getReviewDocuments: getReviewDocumentsTool,
   getReviewAnalyses: getReviewAnalysesTool,
+  saveResponse: saveResponseTool,
 };
 
 export type DevTrailTools = typeof devtrailTools;
